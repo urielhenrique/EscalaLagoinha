@@ -31,22 +31,38 @@ Regra:
 
 Variaveis obrigatorias (backend):
 
-- NODE_ENV=production
-- PORT=3000
-- DATABASE_URL=postgresql://...
-- JWT_SECRET=segredo_longo_64+
-- JWT_EXPIRES_IN=7d
-- FRONTEND_URL=https://app.seudominio.com
-- APP_URL=https://app.seudominio.com
-- CORS_ORIGINS=https://app.seudominio.com
-- AUTH_RATE_LIMIT=5
-- ENABLE_SWAGGER=false
-- SMTP_HOST=smtp.resend.com
-- SMTP_PORT=587
-- SMTP_SECURE=false
-- SMTP_USER=resend
-- SMTP_PASS=chave_resend
-- SMTP_FROM=ScheduleWell <no-reply@seudominio.com>
+Backend (producao) - formato para colar no Coolify:
+
+```env
+NODE_ENV=production
+PORT=3000
+DATABASE_URL=postgresql://postgres:SENHA_FORTE@postgres:5432/schedulewell?schema=public
+
+JWT_SECRET=COLOQUE_AQUI_UM_SEGREDO_BEM_LONGO_64_PLUS
+JWT_EXPIRES_IN=7d
+
+FRONTEND_URL=https://app.seu-dominio.com
+APP_URL=https://app.seu-dominio.com
+CORS_ORIGINS=https://app.seu-dominio.com
+
+AUTH_RATE_LIMIT=5
+ENABLE_SWAGGER=false
+
+SMTP_HOST=smtp.resend.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=resend
+SMTP_PASS=sua_chave_resend
+SMTP_FROM_NAME=Escala Lagoinha
+SMTP_FROM_EMAIL=seu-remetente@seu-dominio.com
+SMTP_FROM=Escala Lagoinha <seu-remetente@seu-dominio.com>
+```
+
+Observacao importante:
+
+- O backend usa SMTP_FROM no envio real.
+- SMTP_FROM_NAME e SMTP_FROM_EMAIL podem ficar no Coolify para organizacao e referencia.
+- Mantenha SMTP_FROM preenchido no formato Nome <email>.
 
 ### 2.2 Frontend
 
@@ -59,12 +75,27 @@ Variaveis obrigatorias (backend):
 - Dominio: app.seudominio.com
 - SSL: gerenciado pelo proxy do Coolify
 
+Frontend (producao) - formato para colar no Coolify:
+
+```env
+VITE_API_URL=https://api.seu-dominio.com/api
+VITE_APP_NAME=ScheduleWell
+```
+
 ### 2.3 Banco PostgreSQL
 
 - Instancia separada por ambiente
 - Nao expor porta publica do banco
 - Liberar acesso somente para backend via rede interna
 - Usuario e senha diferentes entre ambientes
+
+Banco (producao) - formato para colar no Coolify:
+
+```env
+POSTGRES_DB=schedulewell
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=SENHA_FORTE_UNICA
+```
 
 ## 3. Dominio e SSL
 
