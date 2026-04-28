@@ -2,6 +2,8 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 
+ENV NODE_ENV=development
+
 COPY package*.json ./
 RUN npm ci
 
@@ -14,6 +16,8 @@ RUN npm prune --omit=dev
 # ─── Stage 2: runtime ────────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime
 WORKDIR /app
+
+ENV NODE_ENV=production
 
 RUN apk add --no-cache dumb-init curl
 
