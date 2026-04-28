@@ -25,8 +25,15 @@ export class ApiError extends Error {
   }
 }
 
-const apiBaseUrl =
-  import.meta.env.VITE_API_URL?.trim() || "http://localhost:3000/api";
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
+
+if (import.meta.env.PROD && !configuredApiUrl) {
+  throw new Error(
+    "VITE_API_URL não configurada para build de produção do frontend.",
+  );
+}
+
+const apiBaseUrl = configuredApiUrl || "http://localhost:3000/api";
 
 export const api = axios.create({
   baseURL: apiBaseUrl,

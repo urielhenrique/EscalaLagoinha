@@ -1,6 +1,5 @@
 import {
   Bell,
-  BookOpen,
   BrainCircuit,
   Building2,
   CalendarCheck2,

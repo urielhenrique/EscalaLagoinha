@@ -7,6 +7,9 @@ ARG VITE_APP_NAME
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_APP_NAME=$VITE_APP_NAME
 
+RUN test -n "$VITE_API_URL" || (echo "VITE_API_URL is required for production build" && exit 1)
+RUN test -n "$VITE_APP_NAME" || (echo "VITE_APP_NAME is required for production build" && exit 1)
+
 COPY package*.json ./
 RUN npm ci
 

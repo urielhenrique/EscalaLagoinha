@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { HelpCircle, X } from "lucide-react";
-import { createPortal } from "react-dom";
 
 // ─── ContextualHelp (tooltip/popover) ─────────────────────────────────────
 

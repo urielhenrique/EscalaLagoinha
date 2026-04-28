@@ -587,7 +587,15 @@ export type VolunteerExecutiveDashboard = {
 };
 
 export type CreateEventPayload = {
-++ insert before
+  nome: string;
+  descricao: string;
+  dataInicio: string;
+  dataFim: string;
+  recorrencia?: string;
+};
+
+export type UpdateEventPayload = Partial<CreateEventPayload>;
+
 export type StrategicAlertType =
   | "RISCO_ALTO"
   | "DEFICIT"
@@ -647,15 +655,6 @@ export type StrategicDashboard = {
   recommendations: string[];
   generatedAt: string;
 };
-
-  nome: string;
-  descricao: string;
-  dataInicio: string;
-  dataFim: string;
-  recorrencia?: string;
-};
-
-export type UpdateEventPayload = Partial<CreateEventPayload>;
 
 export type CreateSchedulePayload = {
   eventId: string;
