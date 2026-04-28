@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#070b14" />
+    <title>Sem conexão | Escala Lagoinha</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        color-scheme: dark;
+      }
+
+      body {
+        min-height: 100dvh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family:
+          "Manrope",
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background-color: #070b14;
+        background-image:
+          radial-gradient(
+            circle at 8% 0%,
+            rgba(25, 50, 89, 0.38),
+            transparent 38%
+          ),
+          radial-gradient(
+            circle at 100% 100%,
+            rgba(21, 84, 77, 0.26),
+            transparent 35%
+          );
+        color: #dbe6ff;
+        padding: 1.5rem;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .card {
+        max-width: 400px;
+        width: 100%;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 1.5rem;
+        padding: 2.5rem 2rem;
+        text-align: center;
+      }
+
+      .icon-wrap {
+        width: 64px;
+        height: 64px;
+        margin: 0 auto 1.25rem;
+        background: rgba(22, 213, 176, 0.1);
+        border: 1px solid rgba(22, 213, 176, 0.3);
+        border-radius: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .icon-wrap svg {
+        width: 28px;
+        height: 28px;
+        color: #3bf2ce;
+      }
+
+      .logo {
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: #91a0be;
+        margin-bottom: 0.75rem;
+      }
+
+      h1 {
+        font-family: "Sora", "Manrope", system-ui, sans-serif;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 0.75rem;
+        line-height: 1.2;
+      }
+
+      p {
+        font-size: 0.875rem;
+        color: #91a0be;
+        line-height: 1.6;
+        margin-bottom: 1.75rem;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: rgba(22, 213, 176, 0.15);
+        border: 1px solid rgba(59, 242, 206, 0.35);
+        color: #c8fff3;
+        font-size: 0.875rem;
+        font-weight: 600;
+        padding: 0.625rem 1.25rem;
+        border-radius: 0.75rem;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 150ms;
+        min-height: 44px;
+      }
+
+      .btn:hover {
+        background: rgba(22, 213, 176, 0.22);
+      }
+
+      .status {
+        margin-top: 1.5rem;
+        font-size: 0.75rem;
+        color: #91a0be;
+        opacity: 0.6;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+
+      .pulse {
+        animation: pulse 2s ease-in-out infinite;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="icon-wrap">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M3 3l1.664 1.664M6.5 6.5A5 5 0 0112 5a5 5 0 015 5c0 2.097-.81 4.006-2.134 5.434M17.5 17.5l1.5 1.5M12 19v2m-4-4H6m12 0h-2m-4-6h.01M3 3l18 18"
+          />
+        </svg>
+      </div>
+
+      <p class="logo">Escala Lagoinha</p>
+      <h1>Sem conexão</h1>
+      <p>
+        Você está offline. Verifique sua conexão com a internet e tente
+        novamente.
+      </p>
+
+      <a
+        href="/dashboard"
+        class="btn"
+        onclick="
+          location.reload();
+          return false;
+        "
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+          />
+        </svg>
+        Tentar novamente
+      </a>
+
+      <p class="status pulse">Aguardando conexão…</p>
+    </div>
+
+    <script>
+      window.addEventListener("online", () => {
+        location.href = "/dashboard";
+      });
+    </script>
+  </body>
+</html>

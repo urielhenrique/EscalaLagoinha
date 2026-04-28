@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Escala Lagoinha Maskable">
+  <rect width="512" height="512" fill="#070b14"/>
+  <rect x="48" y="48" width="416" height="416" rx="96" fill="#0f1b33" stroke="#1f355f" stroke-width="4"/>
+  <path d="M176 168h48v176h-48zm112 0h48v52h-48zM224 296h112v48H224z" fill="#16d5b0"/>
+  <circle cx="360" cy="176" r="36" fill="#3bf2ce"/>
+  <path d="M338 176l16 16 26-26" fill="none" stroke="#07101f" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

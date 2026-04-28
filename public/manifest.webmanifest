@@ -1,0 +1,93 @@
+{
+  "name": "Escala Lagoinha - Church Volunteer Manager",
+  "short_name": "Escala Lagoinha",
+  "description": "Gerencie voluntarios, escalas, trocas e notificacoes da sua igreja com inteligencia e elegancia.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "/dashboard?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#070b14",
+  "theme_color": "#070b14",
+  "categories": ["productivity", "business", "utilities"],
+  "id": "/",
+  "icons": [
+    {
+      "src": "/pwa/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa/maskable-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Minhas Escalas",
+      "short_name": "Escalas",
+      "description": "Ver minhas escalas de servico",
+      "url": "/minhas-escalas?source=shortcut",
+      "icons": [
+        {
+          "src": "/pwa/icon-192.svg",
+          "sizes": "192x192",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "Notificacoes",
+      "short_name": "Avisos",
+      "description": "Central de notificacoes",
+      "url": "/notificacoes?source=shortcut",
+      "icons": [
+        {
+          "src": "/pwa/icon-192.svg",
+          "sizes": "192x192",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "Solicitar Troca",
+      "short_name": "Trocar",
+      "description": "Solicitar troca de escala",
+      "url": "/solicitar-troca?source=shortcut",
+      "icons": [
+        {
+          "src": "/pwa/icon-192.svg",
+          "sizes": "192x192",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/pwa/screenshot-desktop.svg",
+      "sizes": "1365x768",
+      "type": "image/svg+xml",
+      "form_factor": "wide",
+      "label": "Dashboard executivo no desktop"
+    },
+    {
+      "src": "/pwa/screenshot-mobile.svg",
+      "sizes": "540x960",
+      "type": "image/svg+xml",
+      "form_factor": "narrow",
+      "label": "Painel mobile de voluntario"
+    }
+  ]
+}

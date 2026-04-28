@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-schedulewell}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-schedulewell}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - internal
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-schedulewell}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET no .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      FRONTEND_URL: ${FRONTEND_URL:?Defina FRONTEND_URL no .env}
+      APP_URL: ${APP_URL:?Defina APP_URL no .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Defina CORS_ORIGINS no .env}
+      AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT:-5}
+      ENABLE_SWAGGER: ${ENABLE_SWAGGER:-false}
+      SMTP_HOST: ${SMTP_HOST:?Defina SMTP_HOST no .env}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:?Defina SMTP_USER no .env}
+      SMTP_PASS: ${SMTP_PASS:?Defina SMTP_PASS no .env}
+      SMTP_FROM: ${SMTP_FROM:?Defina SMTP_FROM no .env}
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    networks:
+      - internal
+    ports:
+      - "3000:3000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:?Defina VITE_API_URL no .env}
+        VITE_APP_NAME: ${VITE_APP_NAME:-ScheduleWell}
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    networks:
+      - external
+
+volumes:
+  postgres_data:
+    driver: local
+networks:
+  internal:
+    driver: bridge
+    internal: true
+  external:
+    driver: bridge

@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: escala_lagoinha_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: escala_lagoinha
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: escala_lagoinha_backend
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      PORT: 3000
+      JWT_SECRET: troque-este-segredo-em-producao
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/escala_lagoinha?schema=public
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:

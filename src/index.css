@@ -1,0 +1,218 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Manrope", sans-serif;
+  --font-display: "Sora", sans-serif;
+  --color-brand-50: #ebfffa;
+  --color-brand-100: #c8fff3;
+  --color-brand-300: #7df5e0;
+  --color-brand-400: #3bf2ce;
+  --color-brand-500: #16d5b0;
+  --color-brand-600: #09ac90;
+  --color-app-900: #070b14;
+  --color-app-850: #0c1220;
+  --color-app-800: #11192a;
+  --color-app-700: #1a253a;
+  --color-app-200: #91a0be;
+  --color-app-100: #dbe6ff;
+}
+
+:root {
+  color-scheme: dark;
+  --touch-target: 44px;
+  /* Safe area insets para iOS (notch / Dynamic Island) */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+body {
+  @apply min-h-screen bg-app-900 font-sans text-app-100 antialiased;
+  background-image:
+    radial-gradient(circle at 8% 0%, rgba(25, 50, 89, 0.38), transparent 38%),
+    radial-gradient(
+      circle at 100% 100%,
+      rgba(21, 84, 77, 0.26),
+      transparent 35%
+    ),
+    linear-gradient(175deg, #070b14 0%, #0b1322 50%, #070b14 100%);
+  overscroll-behavior-y: contain;
+  text-rendering: optimizeLegibility;
+  /* Suporte a safe-area no body */
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+button,
+a[role="button"] {
+  min-height: var(--touch-target);
+}
+
+/* ── Scrollbar estilizada (Webkit) ─────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+/* Scrollbar utility para sidebar */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+}
+
+/* ── Focus visível acessível ───────────────────────────────── */
+:focus-visible {
+  outline: 2px solid rgba(59, 242, 206, 0.6);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* ── Tabela mobile friendly ────────────────────────────────── */
+@media (max-width: 1024px) {
+  .table-touch td,
+  .table-touch th {
+    padding-top: 0.85rem;
+    padding-bottom: 0.85rem;
+  }
+}
+
+/* ── Safe-area para a bottom nav no iOS ────────────────────── */
+.safe-bottom {
+  padding-bottom: calc(0.5rem + var(--safe-bottom));
+}
+
+/* ── Animações ─────────────────────────────────────────────── */
+@keyframes fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-fade {
+  animation: fade 420ms ease-out both;
+}
+
+.animate-rise {
+  animation: rise 520ms cubic-bezier(0.21, 1, 0.31, 1) both;
+}
+
+.animate-slide-up {
+  animation: slide-up 500ms cubic-bezier(0.21, 1, 0.31, 1) both;
+}
+
+/* ── Stagger de entrada para listas ────────────────────────── */
+.stagger-children > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+.stagger-children > *:nth-child(2) {
+  animation-delay: 60ms;
+}
+.stagger-children > *:nth-child(3) {
+  animation-delay: 120ms;
+}
+.stagger-children > *:nth-child(4) {
+  animation-delay: 180ms;
+}
+.stagger-children > *:nth-child(5) {
+  animation-delay: 240ms;
+}
+.stagger-children > *:nth-child(6) {
+  animation-delay: 300ms;
+}
+.stagger-children > *:nth-child(7) {
+  animation-delay: 360ms;
+}
+.stagger-children > *:nth-child(8) {
+  animation-delay: 420ms;
+}
+.stagger-children > *:nth-child(9) {
+  animation-delay: 480ms;
+}
+.stagger-children > *:nth-child(10) {
+  animation-delay: 540ms;
+}
+
+/* ── Seleção de texto ──────────────────────────────────────── */
+::selection {
+  background: rgba(22, 213, 176, 0.25);
+  color: #ebfffa;
+}

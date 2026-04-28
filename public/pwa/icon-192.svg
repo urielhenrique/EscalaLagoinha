@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Escala Lagoinha">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#0e1730"/>
+      <stop offset="100%" stop-color="#07101f"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#3bf2ce"/>
+      <stop offset="100%" stop-color="#16d5b0"/>
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="44" fill="url(#bg)"/>
+  <rect x="28" y="28" width="136" height="136" rx="32" fill="#0f1b33" stroke="#1f355f"/>
+  <path d="M66 63h18v66H66zm42 0h18v20h-18zM84 111h42v18H84z" fill="url(#mark)"/>
+  <circle cx="134" cy="66" r="14" fill="#16d5b0"/>
+  <path d="M126 66l6 6 10-10" fill="none" stroke="#07101f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

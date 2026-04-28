@@ -1,0 +1,462 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Perfil {
+  MASTER_PLATFORM_ADMIN
+  MASTER_ADMIN
+  ADMIN
+  VOLUNTARIO
+}
+
+enum ApprovalPolicy {
+  MANUAL
+  AUTO
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum UserStatus {
+  PENDENTE
+  ATIVO
+  INATIVO
+}
+
+enum ScheduleStatus {
+  CONFIRMADO
+  PENDENTE
+  CANCELADO
+}
+
+enum SwapRequestStatus {
+  PENDENTE
+  APROVADO
+  RECUSADO
+  CANCELADO
+}
+
+enum AvailabilityDayOfWeek {
+  SEGUNDA
+  TERCA
+  QUARTA
+  QUINTA
+  SEXTA
+  SABADO
+  DOMINGO
+}
+
+enum AvailabilityPeriod {
+  MANHA
+  TARDE
+  NOITE
+}
+
+enum AvailabilityPreference {
+  DISPONIVEL
+  INDISPONIVEL
+  PREFERENCIAL
+}
+
+enum MinistryPreferenceType {
+  PREFERENCIAL
+  INDISPONIVEL
+}
+
+enum NotificationType {
+  SCALE_CREATED
+  REMINDER
+  SWAP_REQUEST
+  SWAP_APPROVED
+  SWAP_DECLINED
+  SCALE_CANCELLED
+  USER_APPROVED
+  USER_REJECTED
+  NEW_VOLUNTEER_PENDING
+}
+
+enum AttendanceStatus {
+  CONFIRMADO
+  PRESENTE
+  ATRASADO
+  AUSENTE
+  JUSTIFICADO
+}
+
+enum ArticleCategory {
+  LOGIN_ACESSO
+  ESCALAS
+  TROCA_ESCALA
+  APROVACAO_VOLUNTARIOS
+  NOTIFICACOES
+  ADMIN_MASTER
+  CONFIGURACOES
+  GERAL
+}
+
+enum FeedbackType {
+  BUG_REPORT
+  FEATURE_REQUEST
+  GENERAL_FEEDBACK
+  IMPROVEMENT
+}
+
+enum FeedbackStatus {
+  ABERTO
+  EM_ANALISE
+  RESOLVIDO
+  FECHADO
+}
+
+model User {
+  id            String     @id @default(uuid())
+  nome          String
+  email         String     @unique
+  senha         String
+  telefone      String
+  foto          String?
+  perfil        Perfil     @default(VOLUNTARIO)
+  status        UserStatus @default(ATIVO)
+  ativo         Boolean    @default(true)
+  churchId      String?
+  church        Church?    @relation(fields: [churchId], references: [id], onDelete: SetNull)
+  ledMinistries Ministry[] @relation("MinistryLeader")
+  ministries    Ministry[] @relation("MinistryMembers")
+  schedules     Schedule[]
+  sentSwapRequests     SwapRequest[] @relation("SwapRequester")
+  receivedSwapRequests SwapRequest[] @relation("SwapRequestedVolunteer")
+  notifications Notification[]
+  passwordResetTokens PasswordResetToken[]
+  availabilities VolunteerAvailability[]
+  blockedDates BlockedDate[]
+  ministryPreferences VolunteerMinistryPreference[]
+  attendanceRecords AttendanceRecord[] @relation("AttendanceVolunteer")
+  markedAttendances AttendanceRecord[] @relation("AttendanceMarker")
+  auditLogs AuditLog[]
+  feedbacks UserFeedback[]
+  createdAt     DateTime   @default(now())
+
+  @@index([churchId])
+}
+
+model Ministry {
+  id          String     @id @default(uuid())
+  nome        String
+  descricao   String
+  churchId    String?
+  church      Church?    @relation(fields: [churchId], references: [id], onDelete: SetNull)
+  leaderId    String?
+  leader      User?      @relation("MinistryLeader", fields: [leaderId], references: [id])
+  members     User[]     @relation("MinistryMembers")
+  schedules   Schedule[]
+  volunteerPreferences VolunteerMinistryPreference[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([churchId])
+  @@unique([churchId, nome])
+}
+
+model Event {
+  id          String     @id @default(uuid())
+  nome        String
+  descricao   String
+  churchId    String?
+  church      Church?    @relation(fields: [churchId], references: [id], onDelete: SetNull)
+  dataInicio  DateTime
+  dataFim     DateTime
+  recorrencia String?
+  schedules   Schedule[]
+  createdAt   DateTime   @default(now())
+
+  @@index([churchId])
+}
+
+model Schedule {
+  id          String         @id @default(uuid())
+  eventId     String
+  ministryId  String
+  volunteerId String
+  churchId    String?
+  church      Church?        @relation(fields: [churchId], references: [id], onDelete: SetNull)
+  status      ScheduleStatus @default(PENDENTE)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  event     Event    @relation(fields: [eventId], references: [id])
+  ministry  Ministry @relation(fields: [ministryId], references: [id])
+  volunteer User     @relation(fields: [volunteerId], references: [id])
+  requestedSwaps SwapRequest[] @relation("RequesterShift")
+  receivedSwaps  SwapRequest[] @relation("RequestedShift")
+  attendance AttendanceRecord?
+
+  @@index([eventId])
+  @@index([ministryId])
+  @@index([volunteerId])
+  @@index([churchId])
+  @@unique([eventId, ministryId, volunteerId])
+}
+
+model SwapRequest {
+  id                   String            @id @default(uuid())
+  requesterShiftId     String
+  requesterId          String
+  requestedShiftId     String
+  requestedVolunteerId String
+  status               SwapRequestStatus @default(PENDENTE)
+  createdAt            DateTime          @default(now())
+
+  requesterShift     Schedule @relation("RequesterShift", fields: [requesterShiftId], references: [id])
+  requester          User     @relation("SwapRequester", fields: [requesterId], references: [id])
+  requestedShift     Schedule @relation("RequestedShift", fields: [requestedShiftId], references: [id])
+  requestedVolunteer User     @relation("SwapRequestedVolunteer", fields: [requestedVolunteerId], references: [id])
+
+  @@index([requesterShiftId])
+  @@index([requestedShiftId])
+  @@index([requesterId])
+  @@index([requestedVolunteerId])
+  @@index([status])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  churchId  String?
+  titulo    String
+  mensagem  String
+  tipo      NotificationType
+  lida      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  church Church? @relation(fields: [churchId], references: [id], onDelete: SetNull)
+
+  @@index([userId, lida])
+  @@index([userId, createdAt])
+  @@index([tipo])
+  @@index([churchId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+}
+
+model VolunteerAvailability {
+  id         String                 @id @default(uuid())
+  volunteerId String
+  dayOfWeek  AvailabilityDayOfWeek
+  period     AvailabilityPeriod
+  preference AvailabilityPreference @default(DISPONIVEL)
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
+
+  volunteer User @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+
+  @@unique([volunteerId, dayOfWeek, period])
+  @@index([volunteerId])
+}
+
+model BlockedDate {
+  id          String   @id @default(uuid())
+  volunteerId String
+  date        DateTime
+  reason      String
+  createdAt   DateTime @default(now())
+
+  volunteer User @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+
+  @@unique([volunteerId, date])
+  @@index([volunteerId])
+}
+
+model VolunteerMinistryPreference {
+  id          String               @id @default(uuid())
+  volunteerId String
+  ministryId  String
+  type        MinistryPreferenceType
+  createdAt   DateTime             @default(now())
+
+  volunteer User     @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+  ministry  Ministry @relation(fields: [ministryId], references: [id], onDelete: Cascade)
+
+  @@unique([volunteerId, ministryId])
+  @@index([volunteerId])
+  @@index([ministryId])
+}
+
+model AttendanceRecord {
+  id          String            @id @default(uuid())
+  scheduleId  String            @unique
+  volunteerId String
+  churchId    String?
+  status      AttendanceStatus?
+  note        String?
+  confirmedAt DateTime?
+  checkedInAt DateTime?
+  markedById  String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  volunteer  User     @relation("AttendanceVolunteer", fields: [volunteerId], references: [id], onDelete: Cascade)
+  markedBy   User?    @relation("AttendanceMarker", fields: [markedById], references: [id])
+  church     Church?  @relation(fields: [churchId], references: [id], onDelete: SetNull)
+
+  @@index([volunteerId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([churchId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  churchId  String?
+  action    String
+  module    String
+  targetId  String?
+  oldValue  Json?
+  newValue  Json?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  church Church? @relation(fields: [churchId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([module, action])
+  @@index([targetId])
+  @@index([createdAt])
+  @@index([churchId])
+}
+
+model Church {
+  id                  String               @id @default(uuid())
+  nome                String
+  slug                String               @unique
+  endereco            String?
+  cidade              String?
+  estado              String?
+  logo                String?
+  responsavelPrincipal String?
+  ativo               Boolean              @default(true)
+  users               User[]
+  ministries          Ministry[]
+  events              Event[]
+  schedules           Schedule[]
+  notifications       Notification[]
+  attendanceRecords   AttendanceRecord[]
+  auditLogs           AuditLog[]
+  settings            ChurchSettings?
+  subscription        ChurchSubscription?
+  feedbacks           UserFeedback[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([ativo])
+}
+
+model ChurchSettings {
+  id                   String         @id @default(uuid())
+  churchId             String         @unique
+  church               Church         @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  customChurchName     String?
+  customPlatformName   String?
+  logoUrl              String?
+  primaryColor         String         @default("#0EA5E9")
+  secondaryColor       String         @default("#22D3EE")
+  accentColor          String         @default("#F59E0B")
+  defaultEmailFrom     String?
+  approvalPolicy       ApprovalPolicy @default(MANUAL)
+  swapRules            Json?
+  defaultServiceDays   Json?
+  reminderLeadMinutes  Int            @default(1440)
+  scoreRules           Json?
+  customDomain         String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+}
+
+model ChurchSubscription {
+  id                String             @id @default(uuid())
+  churchId          String             @unique
+  church            Church             @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  planName          String             @default("STARTER")
+  status            SubscriptionStatus @default(TRIAL)
+  trialEndsAt       DateTime?
+  maxUsers          Int?
+  maxMinistries     Int?
+  maxEventsPerMonth Int?
+  billingEmail      String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+model PlatformBranding {
+  id                 String   @id @default(uuid())
+  appName            String   @default("Escala SaaS")
+  appLogoUrl         String?
+  appPrimaryColor    String   @default("#0EA5E9")
+  appSecondaryColor  String   @default("#22D3EE")
+  appAccentColor     String   @default("#F59E0B")
+  supportEmail       String?
+  websiteUrl         String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model HelpArticle {
+  id            String          @id @default(uuid())
+  titulo        String
+  conteudo      String
+  categoria     ArticleCategory @default(GERAL)
+  tags          String[]
+  publicado     Boolean         @default(true)
+  visualizacoes Int             @default(0)
+  slug          String          @unique
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([categoria])
+  @@index([publicado])
+}
+
+model UserFeedback {
+  id           String         @id @default(uuid())
+  userId       String?
+  churchId     String?
+  tipo         FeedbackType
+  titulo       String
+  descricao    String
+  status       FeedbackStatus @default(ABERTO)
+  paginaOrigem String?
+  avaliacao    Int?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  church Church? @relation(fields: [churchId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([churchId])
+  @@index([tipo])
+  @@index([status])
+}
