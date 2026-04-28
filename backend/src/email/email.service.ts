@@ -1,35 +1,27 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import * as nodemailer from "nodemailer";
-import type { Transporter } from "nodemailer";
+import { Resend } from "resend";
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private transporter: Transporter | null = null;
+  private resend: Resend | null = null;
   private fromAddress: string;
 
   constructor(private readonly config: ConfigService) {
-    const host = config.get<string>("SMTP_HOST");
-    const user = config.get<string>("SMTP_USER");
-    const pass = config.get<string>("SMTP_PASS");
+    const apiKey = config.get<string>("RESEND_API_KEY");
     this.fromAddress =
-      config.get<string>("SMTP_FROM") ??
-      "Escala Lagoinha <noreply@lagoinha.com>";
+      config.get<string>("RESEND_FROM") ??
+      "Escala Lagoinha <noreply@escalalagoinhabh.com>";
 
-    if (!host || !user || !pass) {
+    if (!apiKey) {
       this.logger.warn(
-        "SMTP não configurado — emails serão registrados apenas no console.",
+        "RESEND_API_KEY não configurado — emails serão registrados apenas no console.",
       );
       return;
     }
 
-    this.transporter = nodemailer.createTransport({
-      host,
-      port: config.get<number>("SMTP_PORT", 587),
-      secure: config.get<string>("SMTP_SECURE") === "true",
-      auth: { user, pass },
-    });
+    this.resend = new Resend(apiKey);
   }
 
   // ─── Envio genérico ─────────────────────────────────────────────────────────
@@ -38,25 +30,27 @@ export class EmailService {
     subject: string;
     html: string;
   }): Promise<void> {
-    if (!this.transporter) {
+    if (!this.resend) {
       this.logger.log(
         `[EMAIL MOCK] Para: ${options.to} | Assunto: ${options.subject}`,
       );
       return;
     }
 
-    try {
-      await this.transporter.sendMail({
-        from: this.fromAddress,
-        to: options.to,
-        subject: options.subject,
-        html: options.html,
-      });
-      this.logger.log(
-        `Email enviado para ${options.to} — "${options.subject}"`,
+    const { error } = await this.resend.emails.send({
+      from: this.fromAddress,
+      to: options.to,
+      subject: options.subject,
+      html: options.html,
+    });
+
+    if (error) {
+      this.logger.error(
+        `Falha ao enviar email para ${options.to} — ${error.message}`,
+        error,
       );
-    } catch (err) {
-      this.logger.error(`Falha ao enviar email para ${options.to}`, err);
+    } else {
+      this.logger.log(`Email enviado para ${options.to} — "${options.subject}"`);
     }
   }
 
