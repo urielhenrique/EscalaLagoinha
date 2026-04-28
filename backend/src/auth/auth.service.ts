@@ -263,14 +263,19 @@ export class AuthService {
     );
 
     if (!result.shouldSendEmail) {
+      this.logger.warn(
+        `forgotPassword: email não enviado para "${dto.email}" (usuário não encontrado, inativo ou rate-limit de 60s)`,
+      );
       return;
     }
 
-    void this.email.sendRecuperacaoSenha(
-      result.email,
-      result.nome,
-      result.rawToken,
-    );
+    this.email.sendRecuperacaoSenha(result.email, result.nome, result.rawToken)
+      .catch((err) =>
+        this.logger.error(
+          `forgotPassword: falha ao enviar email para ${result.email}`,
+          err,
+        ),
+      );
   }
 
   async resetPassword(dto: ResetPasswordDto): Promise<void> {
