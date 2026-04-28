@@ -13,4 +13,10 @@ export class HealthController {
   check() {
     return this.healthService.check();
   }
+
+  @Public()
+  @Get("live")
+  live() {
+    return this.healthService.live();
+  }
 }

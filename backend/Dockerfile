@@ -42,7 +42,7 @@ USER nestjs
 EXPOSE 3000
 
 # Health check nativo do Docker
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD wget -qO- http://localhost:3000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=15s --start-period=60s --retries=5 \
+  CMD curl -fsS http://localhost:3000/health || exit 1
 
 CMD ["dumb-init", "sh", "./scripts/start-prod.sh"]

@@ -5,6 +5,15 @@ import { PrismaService } from "../prisma/prisma.service";
 export class HealthService {
   constructor(private readonly prisma: PrismaService) {}
 
+  live() {
+    return {
+      status: "ok",
+      uptime: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+      service: "alive",
+    };
+  }
+
   async check() {
     try {
       await this.prisma.$queryRaw`SELECT 1`;
