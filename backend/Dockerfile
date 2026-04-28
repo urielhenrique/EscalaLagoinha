@@ -15,7 +15,7 @@ RUN npm prune --omit=dev
 FROM node:22-alpine AS runtime
 WORKDIR /app
 
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache dumb-init curl
 
 # Usuário não-root para segurança
 RUN addgroup -g 1001 -S nodejs && adduser -S nestjs -u 1001 -G nodejs
