@@ -129,6 +129,14 @@ Documentação completa: `http://localhost:3000/docs`
 
 ## Deploy em produção
 
+Guia oficial da ETAPA PRODUCAO 3:
+
+- docs/producao/ETAPA-3-DEPLOY-HOMOLOGACAO.md
+- docs/producao/HOMOLOGACAO-CHECKLIST.csv
+- scripts/validate-prod.sh
+- docker-compose.hml.yml
+- .env.hml.example
+
 ### Opção 1 — VPS com Docker (recomendado)
 
 ```bash
@@ -153,6 +161,16 @@ docker compose -f docker-compose.prod.yml ps
 docker compose -f docker-compose.prod.yml logs -f backend
 ```
 
+### Ambiente de homologação isolado
+
+```bash
+cp .env.hml.example .env.hml
+# Ajuste os valores reais de homologacao no arquivo .env.hml
+
+docker compose --env-file .env.hml -f docker-compose.hml.yml up -d --build
+docker compose --env-file .env.hml -f docker-compose.hml.yml ps
+```
+
 #### TLS (HTTPS) com Let's Encrypt
 
 ```bash
@@ -165,6 +183,15 @@ sudo certbot certonly --standalone -d seu.dominio.com
 # Descomente o bloco HTTPS em nginx.conf e ajuste o domínio
 # Suba o Nginx novamente
 docker compose -f docker-compose.prod.yml restart nginx
+```
+
+### Validação rápida de produção/homologação
+
+```bash
+chmod +x scripts/validate-prod.sh
+./scripts/validate-prod.sh \
+  --frontend https://app.seu-dominio.com \
+  --backend https://api.seu-dominio.com/api
 ```
 
 ### Opção 2 — Railway / Render (backend)

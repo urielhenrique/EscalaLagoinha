@@ -1,0 +1,85 @@
+services:
+  postgres_hml:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB_HML:-schedulewell_hml}
+      POSTGRES_USER: ${POSTGRES_USER_HML:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_HML:?Defina POSTGRES_PASSWORD_HML}
+    volumes:
+      - postgres_hml_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER_HML:-postgres} -d ${POSTGRES_DB_HML:-schedulewell_hml}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - internal_hml
+
+  backend_hml:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    depends_on:
+      postgres_hml:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER_HML:-postgres}:${POSTGRES_PASSWORD_HML}@postgres_hml:5432/${POSTGRES_DB_HML:-schedulewell_hml}?schema=public
+      JWT_SECRET: ${JWT_SECRET_HML:?Defina JWT_SECRET_HML}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN_HML:-7d}
+      FRONTEND_URL: ${FRONTEND_URL_HML:?Defina FRONTEND_URL_HML}
+      APP_URL: ${APP_URL_HML:?Defina APP_URL_HML}
+      CORS_ORIGINS: ${CORS_ORIGINS_HML:?Defina CORS_ORIGINS_HML}
+      AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT_HML:-5}
+      ENABLE_SWAGGER: ${ENABLE_SWAGGER_HML:-false}
+      SMTP_HOST: ${SMTP_HOST_HML:?Defina SMTP_HOST_HML}
+      SMTP_PORT: ${SMTP_PORT_HML:-587}
+      SMTP_SECURE: ${SMTP_SECURE_HML:-false}
+      SMTP_USER: ${SMTP_USER_HML:?Defina SMTP_USER_HML}
+      SMTP_PASS: ${SMTP_PASS_HML:?Defina SMTP_PASS_HML}
+      SMTP_FROM: ${SMTP_FROM_HML:?Defina SMTP_FROM_HML}
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    networks:
+      - internal_hml
+    ports:
+      - "3001:3000"
+
+  frontend_hml:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL_HML:?Defina VITE_API_URL_HML}
+        VITE_APP_NAME: ${VITE_APP_NAME_HML:-ScheduleWell-HML}
+    restart: always
+    depends_on:
+      - backend_hml
+    ports:
+      - "8081:80"
+    networks:
+      - external_hml
+
+volumes:
+  postgres_hml_data:
+    driver: local
+
+networks:
+  internal_hml:
+    driver: bridge
+    internal: true
+  external_hml:
+    driver: bridge

@@ -9,9 +9,11 @@
 set -euo pipefail
 
 # ─── Configuração ─────────────────────────────────────────────────────────────
-DB_CONTAINER="${DB_CONTAINER:-escala_lagoinha_db}"
-DB_NAME="${POSTGRES_DB:-escala_lagoinha}"
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+DB_SERVICE="${DB_SERVICE:-postgres}"
+DB_NAME="${POSTGRES_DB:-schedulewell}"
 DB_USER="${POSTGRES_USER:-postgres}"
+DB_PASSWORD="${POSTGRES_PASSWORD:-}"
 
 BACKUP_FILE="${1:-}"
 
@@ -28,6 +30,11 @@ if [[ ! -f "$BACKUP_FILE" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$COMPOSE_FILE" ]]; then
+  echo "Erro: arquivo compose não encontrado: $COMPOSE_FILE"
+  exit 1
+fi
+
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] ATENÇÃO: Esta operação irá substituir todos os dados do banco '$DB_NAME'."
 read -r -p "Confirmar restauração? (s/N) " CONFIRM
 
@@ -39,14 +46,17 @@ fi
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Iniciando restauração a partir de: $BACKUP_FILE"
 
 # ─── Drop e recria o banco ────────────────────────────────────────────────────
-docker exec "$DB_CONTAINER" \
-  psql -U "$DB_USER" -c "DROP DATABASE IF EXISTS ${DB_NAME};"
+docker compose -f "$COMPOSE_FILE" exec -T \
+  -e PGPASSWORD="$DB_PASSWORD" \
+  "$DB_SERVICE" psql -U "$DB_USER" -c "DROP DATABASE IF EXISTS ${DB_NAME};"
 
-docker exec "$DB_CONTAINER" \
-  psql -U "$DB_USER" -c "CREATE DATABASE ${DB_NAME};"
+docker compose -f "$COMPOSE_FILE" exec -T \
+  -e PGPASSWORD="$DB_PASSWORD" \
+  "$DB_SERVICE" psql -U "$DB_USER" -c "CREATE DATABASE ${DB_NAME};"
 
 # ─── Descomprime e restaura ───────────────────────────────────────────────────
-gunzip -c "$BACKUP_FILE" | docker exec -i "$DB_CONTAINER" \
-  psql -U "$DB_USER" "$DB_NAME"
+gunzip -c "$BACKUP_FILE" | docker compose -f "$COMPOSE_FILE" exec -T \
+  -e PGPASSWORD="$DB_PASSWORD" \
+  "$DB_SERVICE" psql -U "$DB_USER" "$DB_NAME"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Restauração concluída com sucesso."
