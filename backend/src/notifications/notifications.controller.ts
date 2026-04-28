@@ -31,7 +31,7 @@ export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
   @Get()
-  @SkipThrottle()
+  @SkipThrottle({ short: true, medium: true, auth: true })
   @ApiOperation({ summary: "Listar notificações do usuário" })
   @ApiQuery({ name: "unreadOnly", required: false, example: "true" })
   @ApiOkResponse({ description: "Notificações listadas com sucesso." })
@@ -45,7 +45,7 @@ export class NotificationsController {
   }
 
   @Get("unread-count")
-  @SkipThrottle()
+  @SkipThrottle({ short: true, medium: true, auth: true })
   @ApiOperation({ summary: "Obter quantidade de notificações não lidas" })
   @ApiOkResponse({ description: "Quantidade obtida com sucesso." })
   @ResponseMessage("Quantidade de não lidas obtida com sucesso.")
