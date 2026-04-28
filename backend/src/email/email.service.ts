@@ -50,7 +50,9 @@ export class EmailService {
         error,
       );
     } else {
-      this.logger.log(`Email enviado para ${options.to} — "${options.subject}"`);
+      this.logger.log(
+        `Email enviado para ${options.to} — "${options.subject}"`,
+      );
     }
   }
 

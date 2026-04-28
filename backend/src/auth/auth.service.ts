@@ -269,7 +269,8 @@ export class AuthService {
       return;
     }
 
-    this.email.sendRecuperacaoSenha(result.email, result.nome, result.rawToken)
+    this.email
+      .sendRecuperacaoSenha(result.email, result.nome, result.rawToken)
       .catch((err) =>
         this.logger.error(
           `forgotPassword: falha ao enviar email para ${result.email}`,
