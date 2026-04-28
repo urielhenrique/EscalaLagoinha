@@ -146,8 +146,12 @@ export class EmailService {
     to: string,
     nome: string,
     token: string,
+    churchName?: string,
   ): Promise<void> {
     const link = `${this.appUrl()}/redefinir-senha?token=${token}`;
+    const churchLabel = churchName
+      ? `na <strong>${this.escape(churchName)}</strong>`
+      : "no <strong>Escala Lagoinha</strong>";
     await this.sendMail({
       to,
       subject: "Recuperação de senha",
@@ -155,7 +159,7 @@ export class EmailService {
         titulo: "Redefinir sua senha",
         corpo: `
           <p>Olá, <strong>${this.escape(nome)}</strong>!</p>
-          <p>Recebemos uma solicitação de redefinição de senha para sua conta no <strong>Escala Lagoinha</strong>.</p>
+          <p>Recebemos uma solicitação de redefinição de senha para sua conta ${churchLabel}.</p>
           <p>Clique no botão abaixo para criar uma nova senha. O link expira em <strong>1 hora</strong>.</p>
           <div style="text-align:center;margin:24px 0">
             <a href="${link}"

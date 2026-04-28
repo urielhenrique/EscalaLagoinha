@@ -14,12 +14,19 @@ export class PasswordResetService {
         rawToken: string;
         nome: string;
         email: string;
+        churchName?: string;
       }
     | { shouldSendEmail: false }
   > {
     const user = await this.prisma.user.findUnique({
       where: { email },
-      select: { id: true, nome: true, email: true, status: true },
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        status: true,
+        church: { select: { nome: true } },
+      },
     });
 
     // Resposta neutra para evitar enumeração de contas
@@ -66,6 +73,7 @@ export class PasswordResetService {
       rawToken,
       nome: user.nome,
       email: user.email,
+      churchName: user.church?.nome,
     };
   }
 
