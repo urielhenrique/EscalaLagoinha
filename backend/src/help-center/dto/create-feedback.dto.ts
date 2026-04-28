@@ -13,19 +13,19 @@ import { FeedbackType } from "@prisma/client";
 
 export class CreateFeedbackDto {
   @IsEnum(FeedbackType)
-  tipo: FeedbackType;
+  tipo!: FeedbackType;
 
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
   @MaxLength(200)
-  titulo: string;
+  titulo!: string;
 
   @IsString()
   @IsNotEmpty()
   @MinLength(10)
   @MaxLength(2000)
-  descricao: string;
+  descricao!: string;
 
   @IsString()
   @IsOptional()

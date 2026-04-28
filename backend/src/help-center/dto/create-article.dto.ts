@@ -15,12 +15,12 @@ export class CreateArticleDto {
   @IsNotEmpty()
   @MinLength(3)
   @MaxLength(200)
-  titulo: string;
+  titulo!: string;
 
   @IsString()
   @IsNotEmpty()
   @MinLength(10)
-  conteudo: string;
+  conteudo!: string;
 
   @IsEnum(ArticleCategory)
   @IsOptional()
@@ -37,5 +37,5 @@ export class CreateArticleDto {
 
   @IsString()
   @IsNotEmpty()
-  slug: string;
+  slug!: string;
 }

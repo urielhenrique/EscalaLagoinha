@@ -47,7 +47,7 @@ export class PrismaService
   }
 
   async enableShutdownHooks(app: INestApplication) {
-    this.$on("beforeExit", async () => {
+    process.once("beforeExit", async () => {
       this.logger.warn("Prisma beforeExit recebido. Encerrando aplicação...");
       await app.close();
     });
