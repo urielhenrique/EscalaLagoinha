@@ -6,6 +6,7 @@ import helmet from "helmet";
 import { AppModule } from "./app.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import { ResponseInterceptor } from "./common/interceptors/response.interceptor";
+import { PrismaService } from "./prisma/prisma.service";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -14,6 +15,8 @@ async function bootstrap() {
   const logger = new Logger("Bootstrap");
   const configService = app.get(ConfigService);
   const isProduction = configService.get<string>("NODE_ENV") === "production";
+  app.enableShutdownHooks();
+  await app.get(PrismaService).enableShutdownHooks(app);
 
   // ─── Segurança: HTTP headers ────────────────────────────────────────────────
   app.use(
@@ -69,7 +72,9 @@ async function bootstrap() {
   }
 
   // ─── Prefixo global + pipes + interceptors + filtros ─────────────────────
-  app.setGlobalPrefix("api");
+  app.setGlobalPrefix("api", {
+    exclude: ["health"],
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -119,7 +124,7 @@ async function bootstrap() {
     `Ambiente: ${isProduction ? "PRODUÇÃO" : "desenvolvimento"} | Porta: ${port}`,
   );
   logger.log(`API disponível em http://localhost:${port}/api`);
-  logger.log(`Health check em http://localhost:${port}/api/health`);
+  logger.log(`Health check em http://localhost:${port}/health`);
 }
 
 bootstrap();

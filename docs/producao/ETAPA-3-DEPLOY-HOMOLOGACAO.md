@@ -25,7 +25,7 @@ Regra:
 - Source: GitHub publico do repositorio
 - Build context: backend
 - Dockerfile: backend/Dockerfile
-- Healthcheck URL: /api/health
+- Healthcheck URL: /health
 - Restart policy: Always
 - Auto deploy: habilitado em push na branch alvo
 
@@ -47,6 +47,11 @@ CORS_ORIGINS=https://app.seu-dominio.com
 
 AUTH_RATE_LIMIT=5
 ENABLE_SWAGGER=false
+PRISMA_CONNECT_MAX_RETRIES=10
+PRISMA_CONNECT_RETRY_DELAY_MS=5000
+PRISMA_MIGRATE_MAX_RETRIES=10
+PRISMA_MIGRATE_RETRY_DELAY_SECONDS=5
+RUN_PRISMA_SEED=false
 
 SMTP_HOST=smtp.resend.com
 SMTP_PORT=587
@@ -151,7 +156,8 @@ Comando seed controlado (manual):
 No Coolify:
 
 - Habilitar retencao de logs
-- Monitorar backend por /api/health
+- Monitorar backend por /health
+- Monitorar backend por /health
 - Alertar quando health falhar consecutivamente
 
 Pontos para acompanhar:
@@ -159,7 +165,8 @@ Pontos para acompanhar:
 - taxa de erro HTTP 5xx
 - falhas SMTP
 - picos de login/forgot password
-- tempo de resposta de /api/health
+- tempo de resposta de /health
+- tempo de resposta de /health
 
 ## 7. Plano de homologacao controlada
 
@@ -205,7 +212,8 @@ Criterios de saida da homologacao:
 - [ ] Restore testado
 - [ ] SSL ativo
 - [ ] Dominio funcionando
-- [ ] Health check real OK (/api/health)
+- [ ] Health check real OK (/health)
+- [ ] Health check real OK (/health)
 - [ ] Logs acessiveis no Coolify
 - [ ] MASTER_ADMIN com senha forte e MFA externo quando possivel
 - [ ] Swagger desativado em producao

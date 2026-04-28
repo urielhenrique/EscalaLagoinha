@@ -112,7 +112,7 @@ Cria automaticamente:
 
 | Método | Rota                 | Descrição                 |
 | ------ | -------------------- | ------------------------- |
-| `GET`  | `/api/health`        | Health check (público)    |
+| `GET`  | `/health`            | Health check (público)    |
 | `POST` | `/api/auth/register` | Cadastro                  |
 | `POST` | `/api/auth/login`    | Login                     |
 | `GET`  | `/api/auth/me`       | Perfil do usuário logado  |
@@ -201,7 +201,7 @@ chmod +x scripts/validate-prod.sh
 3. Defina as variáveis de ambiente no painel
 4. A plataforma detecta o `Dockerfile` automaticamente
 
-O health check em `/api/health` é usado pela plataforma para verificar disponibilidade.
+O health check em `/health` é usado pela plataforma para verificar disponibilidade.
 
 ### Opção 3 — Vercel / Netlify (frontend)
 
@@ -275,7 +275,7 @@ Antes de colocar em produção, verifique:
 - [ ] `ENABLE_SWAGGER=false` (ou protegido por auth)
 - [ ] HTTPS configurado (TLS via Let's Encrypt ou proxy do PaaS)
 - [ ] Backup automático agendado e testado
-- [ ] Health check respondendo em `/api/health`
+- [ ] Health check respondendo em `/health`
 - [ ] Logs monitorados (ex.: `docker compose logs -f backend`)
 - [ ] Variáveis de ambiente não commitadas no git (`.env` no `.gitignore`)
 

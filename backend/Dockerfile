@@ -15,6 +15,8 @@ RUN npm prune --omit=dev
 FROM node:22-alpine AS runtime
 WORKDIR /app
 
+RUN apk add --no-cache dumb-init
+
 # Usuário não-root para segurança
 RUN addgroup -g 1001 -S nodejs && adduser -S nestjs -u 1001 -G nodejs
 
@@ -27,6 +29,9 @@ COPY --from=builder --chown=nestjs:nodejs /app/package*.json ./
 # Garante que Prisma Client (e enums) esteja disponível no runtime
 COPY --from=builder --chown=nestjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=nestjs:nodejs /app/node_modules/@prisma/client ./node_modules/@prisma/client
+COPY --from=builder --chown=nestjs:nodejs /app/scripts ./scripts
+
+RUN chmod +x ./scripts/start-prod.sh
 
 USER nestjs
 
@@ -34,6 +39,6 @@ EXPOSE 3000
 
 # Health check nativo do Docker
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD wget -qO- http://localhost:3000/api/health || exit 1
+  CMD wget -qO- http://localhost:3000/health || exit 1
 
-CMD ["sh", "-c", "node node_modules/.bin/prisma migrate deploy && node dist/src/main.js"]
+CMD ["dumb-init", "sh", "./scripts/start-prod.sh"]

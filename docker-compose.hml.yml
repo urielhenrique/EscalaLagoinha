@@ -40,6 +40,11 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS_HML:?Defina CORS_ORIGINS_HML}
       AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT_HML:-5}
       ENABLE_SWAGGER: ${ENABLE_SWAGGER_HML:-false}
+      PRISMA_CONNECT_MAX_RETRIES: ${PRISMA_CONNECT_MAX_RETRIES_HML:-10}
+      PRISMA_CONNECT_RETRY_DELAY_MS: ${PRISMA_CONNECT_RETRY_DELAY_MS_HML:-5000}
+      PRISMA_MIGRATE_MAX_RETRIES: ${PRISMA_MIGRATE_MAX_RETRIES_HML:-10}
+      PRISMA_MIGRATE_RETRY_DELAY_SECONDS: ${PRISMA_MIGRATE_RETRY_DELAY_SECONDS_HML:-5}
+      RUN_PRISMA_SEED: ${RUN_PRISMA_SEED_HML:-false}
       SMTP_HOST: ${SMTP_HOST_HML:?Defina SMTP_HOST_HML}
       SMTP_PORT: ${SMTP_PORT_HML:-587}
       SMTP_SECURE: ${SMTP_SECURE_HML:-false}
@@ -47,8 +52,7 @@ services:
       SMTP_PASS: ${SMTP_PASS_HML:?Defina SMTP_PASS_HML}
       SMTP_FROM: ${SMTP_FROM_HML:?Defina SMTP_FROM_HML}
     healthcheck:
-      test:
-        ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

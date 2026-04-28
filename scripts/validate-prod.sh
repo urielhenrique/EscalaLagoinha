@@ -27,7 +27,12 @@ if [[ -z "$FRONTEND_URL" || -z "$BACKEND_API_URL" ]]; then
   exit 1
 fi
 
-HEALTH_URL="${BACKEND_API_URL%/}/health"
+BASE_BACKEND_URL="${BACKEND_API_URL%/}"
+if echo "$BASE_BACKEND_URL" | grep -q '/api$'; then
+  BASE_BACKEND_URL="${BASE_BACKEND_URL%/api}"
+fi
+
+HEALTH_URL="${BASE_BACKEND_URL}/health"
 
 echo ""
 echo "==============================================="
