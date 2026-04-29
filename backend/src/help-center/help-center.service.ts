@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { ArticleCategory, FeedbackStatus } from "@prisma/client";
+import { ArticleCategory, FeedbackStatus, FeedbackType } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "../auth/strategies/jwt.strategy";
 import { CreateArticleDto } from "./dto/create-article.dto";
@@ -82,10 +82,12 @@ export class HelpCenterService {
   }
 
   async listFeedbacks(status?: FeedbackStatus, tipo?: string) {
+    const parsedTipo = tipo as FeedbackType | undefined;
+
     return this.prisma.userFeedback.findMany({
       where: {
         ...(status ? { status } : {}),
-        ...(tipo ? { tipo: tipo as any } : {}),
+        ...(parsedTipo ? { tipo: parsedTipo } : {}),
       },
       orderBy: { createdAt: "desc" },
       include: {

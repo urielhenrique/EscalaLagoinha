@@ -69,7 +69,7 @@ export class SmartSchedulerAiEnhancerService {
 
       const content = data.choices?.[0]?.message?.content?.trim();
       return content || null;
-    } catch (error) {
+    } catch {
       this.logger.warn(
         "Falha ao obter insights da OpenAI. Usando fallback local.",
       );

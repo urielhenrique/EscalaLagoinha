@@ -71,7 +71,8 @@ export function MyAvailabilityPage() {
     string[]
   >([]);
 
-  const [blockedDate, setBlockedDate] = useState("");
+  const [blockedDateStart, setBlockedDateStart] = useState("");
+  const [blockedDateEnd, setBlockedDateEnd] = useState("");
   const [blockedReason, setBlockedReason] = useState("");
 
   const [error, setError] = useState<string | null>(null);
@@ -241,8 +242,13 @@ export function MyAvailabilityPage() {
     setError(null);
     setSuccess(null);
 
-    if (!blockedDate || !blockedReason) {
-      setError("Informe data e motivo para bloquear.");
+    if (!blockedDateStart || !blockedDateEnd || !blockedReason) {
+      setError("Informe período (de/até) e motivo para bloquear.");
+      return;
+    }
+
+    if (blockedDateEnd < blockedDateStart) {
+      setError("A data final deve ser maior ou igual à data inicial.");
       return;
     }
 
@@ -250,18 +256,36 @@ export function MyAvailabilityPage() {
 
     try {
       const response = await addBlockedDate({
-        date: blockedDate,
+        date: blockedDateStart,
+        endDate: blockedDateEnd,
         reason: blockedReason,
       });
-      setBlockedDates((current) => [...current, response.data]);
-      setBlockedDate("");
+      const created = response.data;
+
+      if (created.length > 0) {
+        setBlockedDates((current) => {
+          const map = new Map(current.map((item) => [item.id, item]));
+          for (const item of created) {
+            map.set(item.id, item);
+          }
+          return Array.from(map.values());
+        });
+      }
+
+      setBlockedDateStart("");
+      setBlockedDateEnd("");
       setBlockedReason("");
-      setSuccess("Data bloqueada adicionada com sucesso.");
+
+      if (created.length === 0) {
+        setSuccess("As datas do período já estavam bloqueadas.");
+      } else {
+        setSuccess(`${created.length} data(s) bloqueada(s) com sucesso.`);
+      }
     } catch (requestError) {
       setError(
         getErrorMessage(
           requestError,
-          "Não foi possível adicionar data bloqueada.",
+          "Não foi possível adicionar o período bloqueado.",
         ),
       );
     } finally {
@@ -490,7 +514,7 @@ export function MyAvailabilityPage() {
                           )
                         }
                         className={[
-                          "rounded-lg border px-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] transition",
+                          "rounded-lg border px-2 py-1.5 text-[11px] font-semibold uppercase tracking-widest transition",
                           preferred
                             ? "border-brand-400/40 bg-brand-500/20 text-brand-100"
                             : "border-white/15 bg-white/5 text-app-200 hover:bg-white/10",
@@ -506,7 +530,7 @@ export function MyAvailabilityPage() {
                           )
                         }
                         className={[
-                          "rounded-lg border px-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] transition",
+                          "rounded-lg border px-2 py-1.5 text-[11px] font-semibold uppercase tracking-widest transition",
                           unavailable
                             ? "border-rose-400/40 bg-rose-500/20 text-rose-200"
                             : "border-white/15 bg-white/5 text-app-200 hover:bg-white/10",
@@ -532,13 +556,22 @@ export function MyAvailabilityPage() {
 
             <form
               onSubmit={handleAddBlockedDate}
-              className="mb-4 grid gap-3 md:grid-cols-[180px_1fr_auto]"
+              className="mb-4 grid gap-3 md:grid-cols-[160px_160px_1fr_auto]"
             >
               <input
                 type="date"
-                value={blockedDate}
-                onChange={(event) => setBlockedDate(event.target.value)}
+                value={blockedDateStart}
+                onChange={(event) => setBlockedDateStart(event.target.value)}
                 className="rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-sm text-app-100 outline-none"
+                aria-label="Data inicial"
+              />
+              <input
+                type="date"
+                value={blockedDateEnd}
+                min={blockedDateStart || undefined}
+                onChange={(event) => setBlockedDateEnd(event.target.value)}
+                className="rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-sm text-app-100 outline-none"
+                aria-label="Data final"
               />
               <input
                 type="text"
@@ -553,7 +586,7 @@ export function MyAvailabilityPage() {
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-400/35 bg-brand-500/15 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-brand-100 transition hover:bg-brand-500/20 disabled:opacity-60"
               >
                 <CalendarX2 className="h-3.5 w-3.5" />
-                {isAddingBlocked ? "Adicionando..." : "Bloquear"}
+                {isAddingBlocked ? "Adicionando..." : "Bloquear período"}
               </button>
             </form>
 

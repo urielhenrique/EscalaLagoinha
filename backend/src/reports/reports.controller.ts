@@ -61,7 +61,7 @@ export class ReportsController {
     response.setHeader("Content-Type", mimeType);
     response.setHeader(
       "Content-Disposition",
-      `attachment; filename=\"${fileName}\"`,
+      `attachment; filename="${fileName}"`,
     );
 
     return new StreamableFile(fileBuffer);

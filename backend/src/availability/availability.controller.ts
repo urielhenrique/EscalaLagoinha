@@ -57,8 +57,8 @@ export class AvailabilityController {
   }
 
   @Post("me/blocked-dates")
-  @ApiOperation({ summary: "Adicionar data específica bloqueada" })
-  @ResponseMessage("Data bloqueada adicionada com sucesso.")
+  @ApiOperation({ summary: "Adicionar data ou período específico bloqueado" })
+  @ResponseMessage("Datas bloqueadas adicionadas com sucesso.")
   addBlockedDate(
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateBlockedDateDto,

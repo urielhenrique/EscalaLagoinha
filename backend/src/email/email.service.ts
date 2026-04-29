@@ -69,7 +69,7 @@ export class EmailService {
         titulo: "Cadastro recebido!",
         corpo: `
           <p>Olá, <strong>${this.escape(nome)}</strong>!</p>
-          <p>Seu cadastro no sistema <strong>Escala Lagoinha</strong> foi recebido com sucesso.</p>
+          <p>Seu cadastro no sistema <strong>Escala Fácil</strong> foi recebido com sucesso.</p>
           <p>Aguarde a aprovação do líder responsável pelo seu ministério. Você receberá um email assim que sua conta for analisada.</p>
           <p style="color:#94a3b8;font-size:13px;">Se você não solicitou este cadastro, ignore este email.</p>
         `,
@@ -85,7 +85,7 @@ export class EmailService {
         titulo: "Conta aprovada! 🎉",
         corpo: `
           <p>Olá, <strong>${this.escape(nome)}</strong>!</p>
-          <p>Sua conta no <strong>Escala Lagoinha</strong> foi <strong style="color:#34d399">aprovada</strong>!</p>
+          <p>Sua conta no <strong>Escala Fácil</strong> foi <strong style="color:#34d399">aprovada</strong>!</p>
           <p>Você já pode fazer login e visualizar suas escalas, notificações e solicitar trocas.</p>
           <div style="text-align:center;margin:24px 0">
             <a href="${this.appUrl()}/login"
@@ -106,7 +106,7 @@ export class EmailService {
         titulo: "Cadastro não aprovado",
         corpo: `
           <p>Olá, <strong>${this.escape(nome)}</strong>!</p>
-          <p>Infelizmente seu cadastro no <strong>Escala Lagoinha</strong> não foi aprovado pelo líder responsável.</p>
+          <p>Infelizmente seu cadastro no <strong>Escala Fácil</strong> não foi aprovado pelo líder responsável.</p>
           <p>Em caso de dúvidas, entre em contato diretamente com o líder do ministério.</p>
         `,
       }),
@@ -151,7 +151,7 @@ export class EmailService {
     const link = `${this.appUrl()}/redefinir-senha?token=${token}`;
     const churchLabel = churchName
       ? `na <strong>${this.escape(churchName)}</strong>`
-      : "no <strong>Escala Lagoinha</strong>";
+      : "no <strong>Escala Fácil</strong>";
     await this.sendMail({
       to,
       subject: "Recuperação de senha",

@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable } from "@nestjs/common";
 import { AttendanceStatus, Prisma } from "@prisma/client";
 import * as ExcelJS from "exceljs";
-import PDFDocument = require("pdfkit");
+import PDFDocument from "pdfkit";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
 import { JwtPayload } from "../auth/strategies/jwt.strategy";
 import { toJsonValue } from "../common/utils/json";

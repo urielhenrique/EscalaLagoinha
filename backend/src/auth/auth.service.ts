@@ -269,7 +269,6 @@ export class AuthService {
       return;
     }
 
-    this.email;
     this.email
       .sendRecuperacaoSenha(
         result.email,

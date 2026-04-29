@@ -1587,9 +1587,6 @@ export class SmartSchedulerService {
     const confirmedSchedules = recentSchedules.filter(
       (s) => s.status === "CONFIRMADO",
     ).length;
-    const absentSchedules = recentSchedules.filter(
-      (s) => s.attendance?.status === "AUSENTE",
-    ).length;
     const overallAttendanceRate =
       totalSchedules > 0
         ? Math.round((confirmedSchedules / totalSchedules) * 100)

@@ -27,6 +27,16 @@ function toUtcDateBounds(input: Date) {
   return { start, end };
 }
 
+function buildUtcDateRange(start: Date, end: Date): Date[] {
+  const dates: Date[] = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    dates.push(new Date(cursor));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
 function mapDateToDayOfWeek(date: Date): AvailabilityDayOfWeek {
   const day = date.getUTCDay();
   switch (day) {
@@ -215,19 +225,62 @@ export class AvailabilityService {
   async addBlockedDate(user: JwtPayload, dto: CreateBlockedDateDto) {
     await this.ensureVolunteer(user.sub);
 
-    const parsed = new Date(dto.date);
-    if (Number.isNaN(parsed.getTime())) {
-      throw new BadRequestException("Data inválida para bloqueio.");
+    const parsedStart = new Date(dto.date);
+    if (Number.isNaN(parsedStart.getTime())) {
+      throw new BadRequestException("Data inicial inválida para bloqueio.");
     }
 
-    const { start } = toUtcDateBounds(parsed);
+    const parsedEnd = dto.endDate ? new Date(dto.endDate) : parsedStart;
+    if (Number.isNaN(parsedEnd.getTime())) {
+      throw new BadRequestException("Data final inválida para bloqueio.");
+    }
 
-    return this.prisma.blockedDate.create({
-      data: {
+    const { start } = toUtcDateBounds(parsedStart);
+    const { start: end } = toUtcDateBounds(parsedEnd);
+
+    if (end < start) {
+      throw new BadRequestException(
+        "A data final deve ser maior ou igual à data inicial.",
+      );
+    }
+
+    const datesInRange = buildUtcDateRange(start, end);
+
+    const existing = await this.prisma.blockedDate.findMany({
+      where: {
         volunteerId: user.sub,
-        date: start,
-        reason: dto.reason,
+        date: { in: datesInRange },
       },
+      select: { date: true },
+    });
+
+    const existingSet = new Set(
+      existing.map((item) => item.date.toISOString().slice(0, 10)),
+    );
+
+    const datesToCreate = datesInRange.filter(
+      (date) => !existingSet.has(date.toISOString().slice(0, 10)),
+    );
+
+    if (datesToCreate.length === 0) {
+      return [];
+    }
+
+    await this.prisma.blockedDate.createMany({
+      data: datesToCreate.map((date) => ({
+        volunteerId: user.sub,
+        date,
+        reason: dto.reason,
+      })),
+      skipDuplicates: true,
+    });
+
+    return this.prisma.blockedDate.findMany({
+      where: {
+        volunteerId: user.sub,
+        date: { in: datesToCreate },
+      },
+      orderBy: { date: "asc" },
     });
   }
 

@@ -48,9 +48,10 @@ export async function saveMinistryPreferences(
 
 export async function addBlockedDate(payload: {
   date: string;
+  endDate?: string;
   reason: string;
 }) {
-  const response = await api.post<ApiEnvelope<BlockedDateItem>>(
+  const response = await api.post<ApiEnvelope<BlockedDateItem[]>>(
     "/availability/me/blocked-dates",
     payload,
   );
