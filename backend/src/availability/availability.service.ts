@@ -15,6 +15,7 @@ import {
 import { JwtPayload } from "../auth/strategies/jwt.strategy";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateBlockedDateDto } from "./dto/create-blocked-date.dto";
+import { RemoveBlockedDateRangeDto } from "./dto/remove-blocked-date-range.dto";
 import { UpsertAvailabilityDto } from "./dto/upsert-availability.dto";
 import { UpsertMinistryPreferencesDto } from "./dto/upsert-ministry-preferences.dto";
 
@@ -25,6 +26,31 @@ function toUtcDateBounds(input: Date) {
   const end = new Date(start);
   end.setUTCDate(end.getUTCDate() + 1);
   return { start, end };
+}
+
+function parseDateOnlyInput(value: string, fieldLabel: string): Date {
+  const trimmed = value.trim();
+  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/);
+
+  if (!match) {
+    throw new BadRequestException(`${fieldLabel} inválida para bloqueio.`);
+  }
+
+  const [, yearRaw, monthRaw, dayRaw] = match;
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    throw new BadRequestException(`${fieldLabel} inválida para bloqueio.`);
+  }
+
+  return parsed;
 }
 
 function buildUtcDateRange(start: Date, end: Date): Date[] {
@@ -225,15 +251,10 @@ export class AvailabilityService {
   async addBlockedDate(user: JwtPayload, dto: CreateBlockedDateDto) {
     await this.ensureVolunteer(user.sub);
 
-    const parsedStart = new Date(dto.date);
-    if (Number.isNaN(parsedStart.getTime())) {
-      throw new BadRequestException("Data inicial inválida para bloqueio.");
-    }
-
-    const parsedEnd = dto.endDate ? new Date(dto.endDate) : parsedStart;
-    if (Number.isNaN(parsedEnd.getTime())) {
-      throw new BadRequestException("Data final inválida para bloqueio.");
-    }
+    const parsedStart = parseDateOnlyInput(dto.date, "Data inicial");
+    const parsedEnd = dto.endDate
+      ? parseDateOnlyInput(dto.endDate, "Data final")
+      : parsedStart;
 
     const { start } = toUtcDateBounds(parsedStart);
     const { start: end } = toUtcDateBounds(parsedEnd);
@@ -295,6 +316,49 @@ export class AvailabilityService {
     }
 
     return this.prisma.blockedDate.delete({ where: { id } });
+  }
+
+  async removeBlockedDateRange(
+    user: JwtPayload,
+    dto: RemoveBlockedDateRangeDto,
+  ) {
+    await this.ensureVolunteer(user.sub);
+
+    const parsedStart = parseDateOnlyInput(dto.startDate, "Data inicial");
+    const parsedEnd = parseDateOnlyInput(dto.endDate, "Data final");
+
+    const { start } = toUtcDateBounds(parsedStart);
+    const { start: end } = toUtcDateBounds(parsedEnd);
+
+    if (end < start) {
+      throw new BadRequestException(
+        "A data final deve ser maior ou igual à data inicial.",
+      );
+    }
+
+    const removed = await this.prisma.blockedDate.deleteMany({
+      where: {
+        volunteerId: user.sub,
+        date: {
+          gte: start,
+          lte: end,
+        },
+      },
+    });
+
+    return { removed: removed.count };
+  }
+
+  async removeAllBlockedDates(user: JwtPayload) {
+    await this.ensureVolunteer(user.sub);
+
+    const removed = await this.prisma.blockedDate.deleteMany({
+      where: {
+        volunteerId: user.sub,
+      },
+    });
+
+    return { removed: removed.count };
   }
 
   async assertVolunteerAvailable(params: {

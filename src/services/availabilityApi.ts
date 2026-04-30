@@ -64,3 +64,23 @@ export async function removeBlockedDate(id: string) {
   );
   return response.data;
 }
+
+export async function removeBlockedDateRange(payload: {
+  startDate: string;
+  endDate: string;
+}) {
+  const response = await api.delete<ApiEnvelope<{ removed: number }>>(
+    "/availability/me/blocked-dates",
+    {
+      params: payload,
+    },
+  );
+  return response.data;
+}
+
+export async function removeAllBlockedDates() {
+  const response = await api.delete<ApiEnvelope<{ removed: number }>>(
+    "/availability/me/blocked-dates/all",
+  );
+  return response.data;
+}

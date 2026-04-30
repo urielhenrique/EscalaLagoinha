@@ -6,6 +6,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Put,
 } from "@nestjs/common";
 import {
@@ -19,6 +20,7 @@ import { JwtPayload } from "../auth/strategies/jwt.strategy";
 import { ResponseMessage } from "../common/decorators/response-message.decorator";
 import { AvailabilityService } from "./availability.service";
 import { CreateBlockedDateDto } from "./dto/create-blocked-date.dto";
+import { RemoveBlockedDateRangeDto } from "./dto/remove-blocked-date-range.dto";
 import { UpsertAvailabilityDto } from "./dto/upsert-availability.dto";
 import { UpsertMinistryPreferencesDto } from "./dto/upsert-ministry-preferences.dto";
 
@@ -64,6 +66,23 @@ export class AvailabilityController {
     @Body() dto: CreateBlockedDateDto,
   ) {
     return this.availabilityService.addBlockedDate(user, dto);
+  }
+
+  @Delete("me/blocked-dates")
+  @ApiOperation({ summary: "Remover período de datas bloqueadas" })
+  @ResponseMessage("Período de datas bloqueadas removido com sucesso.")
+  removeBlockedDateRange(
+    @CurrentUser() user: JwtPayload,
+    @Query() dto: RemoveBlockedDateRangeDto,
+  ) {
+    return this.availabilityService.removeBlockedDateRange(user, dto);
+  }
+
+  @Delete("me/blocked-dates/all")
+  @ApiOperation({ summary: "Remover todas as datas bloqueadas" })
+  @ResponseMessage("Todas as datas bloqueadas foram removidas com sucesso.")
+  removeAllBlockedDates(@CurrentUser() user: JwtPayload) {
+    return this.availabilityService.removeAllBlockedDates(user);
   }
 
   @Delete("me/blocked-dates/:id")

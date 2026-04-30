@@ -5,7 +5,9 @@ import { getErrorMessage } from "../services/api";
 import {
   addBlockedDate,
   getMyAvailability,
+  removeAllBlockedDates,
   removeBlockedDate,
+  removeBlockedDateRange,
   saveMinistryPreferences,
   saveWeeklyAvailability,
 } from "../services/availabilityApi";
@@ -55,11 +57,55 @@ function preferenceLabel(value: SlotValue) {
   return "Indisponível";
 }
 
+function normalizeDateInput(value: string): string | null {
+  const trimmed = value.trim();
+
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/);
+  if (isoMatch) {
+    const [, yearRaw, monthRaw, dayRaw] = isoMatch;
+    const year = Number(yearRaw);
+    const month = Number(monthRaw);
+    const day = Number(dayRaw);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+
+    if (
+      parsed.getUTCFullYear() === year &&
+      parsed.getUTCMonth() === month - 1 &&
+      parsed.getUTCDate() === day
+    ) {
+      return `${yearRaw}-${monthRaw}-${dayRaw}`;
+    }
+
+    return null;
+  }
+
+  const brMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!brMatch) return null;
+
+  const [, dayRaw, monthRaw, yearRaw] = brMatch;
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return `${yearRaw}-${monthRaw}-${dayRaw}`;
+}
+
 export function MyAvailabilityPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingWeekly, setIsSavingWeekly] = useState(false);
   const [isSavingMinistry, setIsSavingMinistry] = useState(false);
   const [isAddingBlocked, setIsAddingBlocked] = useState(false);
+  const [isRemovingBlockedRange, setIsRemovingBlockedRange] = useState(false);
+  const [isRemovingAllBlocked, setIsRemovingAllBlocked] = useState(false);
 
   const [slotMap, setSlotMap] = useState<Record<string, SlotValue>>({});
   const [blockedDates, setBlockedDates] = useState<BlockedDateItem[]>([]);
@@ -74,6 +120,8 @@ export function MyAvailabilityPage() {
   const [blockedDateStart, setBlockedDateStart] = useState("");
   const [blockedDateEnd, setBlockedDateEnd] = useState("");
   const [blockedReason, setBlockedReason] = useState("");
+  const [blockedRemovalStart, setBlockedRemovalStart] = useState("");
+  const [blockedRemovalEnd, setBlockedRemovalEnd] = useState("");
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -247,7 +295,15 @@ export function MyAvailabilityPage() {
       return;
     }
 
-    if (blockedDateEnd < blockedDateStart) {
+    const normalizedStart = normalizeDateInput(blockedDateStart);
+    const normalizedEnd = normalizeDateInput(blockedDateEnd);
+
+    if (!normalizedStart || !normalizedEnd) {
+      setError("Data inválida. Use o formato de data do seletor.");
+      return;
+    }
+
+    if (normalizedEnd < normalizedStart) {
       setError("A data final deve ser maior ou igual à data inicial.");
       return;
     }
@@ -256,8 +312,8 @@ export function MyAvailabilityPage() {
 
     try {
       const response = await addBlockedDate({
-        date: blockedDateStart,
-        endDate: blockedDateEnd,
+        date: normalizedStart,
+        endDate: normalizedEnd,
         reason: blockedReason,
       });
       const created = response.data;
@@ -308,6 +364,106 @@ export function MyAvailabilityPage() {
           "Não foi possível remover data bloqueada.",
         ),
       );
+    }
+  };
+
+  const handleRemoveBlockedDateRange = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    if (!blockedRemovalStart || !blockedRemovalEnd) {
+      setError("Informe o período (de/até) que deseja remover.");
+      return;
+    }
+
+    const normalizedStart = normalizeDateInput(blockedRemovalStart);
+    const normalizedEnd = normalizeDateInput(blockedRemovalEnd);
+
+    if (!normalizedStart || !normalizedEnd) {
+      setError("Data inválida. Use o formato de data do seletor.");
+      return;
+    }
+
+    if (normalizedEnd < normalizedStart) {
+      setError("A data final deve ser maior ou igual à data inicial.");
+      return;
+    }
+
+    setIsRemovingBlockedRange(true);
+
+    try {
+      const response = await removeBlockedDateRange({
+        startDate: normalizedStart,
+        endDate: normalizedEnd,
+      });
+
+      setBlockedDates((current) =>
+        current.filter((item) => {
+          const dateOnly = normalizeDateInput(item.date);
+          if (!dateOnly) return true;
+          return dateOnly < normalizedStart || dateOnly > normalizedEnd;
+        }),
+      );
+
+      setBlockedRemovalStart("");
+      setBlockedRemovalEnd("");
+
+      const removed = response.data.removed;
+      if (removed === 0) {
+        setSuccess("Nenhuma data bloqueada encontrada no período informado.");
+      } else {
+        setSuccess(`${removed} data(s) removida(s) com sucesso.`);
+      }
+    } catch (requestError) {
+      setError(
+        getErrorMessage(
+          requestError,
+          "Não foi possível remover o período bloqueado.",
+        ),
+      );
+    } finally {
+      setIsRemovingBlockedRange(false);
+    }
+  };
+
+  const handleRemoveAllBlockedDates = async () => {
+    setError(null);
+    setSuccess(null);
+
+    if (blockedDates.length === 0) {
+      setError("Não há datas bloqueadas para remover.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Tem certeza que deseja remover todas as datas bloqueadas?",
+    );
+    if (!confirmed) return;
+
+    setIsRemovingAllBlocked(true);
+
+    try {
+      const response = await removeAllBlockedDates();
+      setBlockedDates([]);
+
+      const removed = response.data.removed;
+      if (removed === 0) {
+        setSuccess("Nenhuma data bloqueada encontrada para remoção.");
+      } else {
+        setSuccess(`Todas as datas bloqueadas foram removidas (${removed}).`);
+      }
+    } catch (requestError) {
+      setError(
+        getErrorMessage(
+          requestError,
+          "Não foi possível remover todas as datas bloqueadas.",
+        ),
+      );
+    } finally {
+      setIsRemovingAllBlocked(false);
     }
   };
 
@@ -554,6 +710,18 @@ export function MyAvailabilityPage() {
               Datas específicas bloqueadas
             </h2>
 
+            <div className="mb-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => void handleRemoveAllBlockedDates()}
+                disabled={isRemovingAllBlocked || blockedDates.length === 0}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-400/35 bg-rose-500/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-60"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {isRemovingAllBlocked ? "Removendo tudo..." : "Remover tudo"}
+              </button>
+            </div>
+
             <form
               onSubmit={handleAddBlockedDate}
               className="mb-4 grid gap-3 md:grid-cols-[160px_160px_1fr_auto]"
@@ -587,6 +755,35 @@ export function MyAvailabilityPage() {
               >
                 <CalendarX2 className="h-3.5 w-3.5" />
                 {isAddingBlocked ? "Adicionando..." : "Bloquear período"}
+              </button>
+            </form>
+
+            <form
+              onSubmit={handleRemoveBlockedDateRange}
+              className="mb-4 grid gap-3 md:grid-cols-[160px_160px_auto]"
+            >
+              <input
+                type="date"
+                value={blockedRemovalStart}
+                onChange={(event) => setBlockedRemovalStart(event.target.value)}
+                className="rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-sm text-app-100 outline-none"
+                aria-label="Data inicial para remoção"
+              />
+              <input
+                type="date"
+                value={blockedRemovalEnd}
+                min={blockedRemovalStart || undefined}
+                onChange={(event) => setBlockedRemovalEnd(event.target.value)}
+                className="rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-sm text-app-100 outline-none"
+                aria-label="Data final para remoção"
+              />
+              <button
+                type="submit"
+                disabled={isRemovingBlockedRange}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-400/35 bg-rose-500/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-60"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {isRemovingBlockedRange ? "Removendo..." : "Remover período"}
               </button>
             </form>
 
