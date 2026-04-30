@@ -758,34 +758,47 @@ export function MyAvailabilityPage() {
               </button>
             </form>
 
-            <form
-              onSubmit={handleRemoveBlockedDateRange}
-              className="mb-4 grid gap-3 md:grid-cols-[160px_160px_auto]"
-            >
-              <input
-                type="date"
-                value={blockedRemovalStart}
-                onChange={(event) => setBlockedRemovalStart(event.target.value)}
-                className="rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-sm text-app-100 outline-none"
-                aria-label="Data inicial para remoção"
-              />
-              <input
-                type="date"
-                value={blockedRemovalEnd}
-                min={blockedRemovalStart || undefined}
-                onChange={(event) => setBlockedRemovalEnd(event.target.value)}
-                className="rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-sm text-app-100 outline-none"
-                aria-label="Data final para remoção"
-              />
-              <button
-                type="submit"
-                disabled={isRemovingBlockedRange}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-400/35 bg-rose-500/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-60"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                {isRemovingBlockedRange ? "Removendo..." : "Remover período"}
-              </button>
-            </form>
+            {blockedDates.length > 0 ? (
+              <>
+                <p className="mb-2 text-xs uppercase tracking-[0.12em] text-app-300">
+                  Remover bloqueios por período
+                </p>
+                <form
+                  onSubmit={handleRemoveBlockedDateRange}
+                  className="mb-4 grid gap-3 md:grid-cols-[160px_160px_auto]"
+                >
+                  <input
+                    type="date"
+                    value={blockedRemovalStart}
+                    onChange={(event) =>
+                      setBlockedRemovalStart(event.target.value)
+                    }
+                    className="rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-sm text-app-100 outline-none"
+                    aria-label="Data inicial para remoção"
+                  />
+                  <input
+                    type="date"
+                    value={blockedRemovalEnd}
+                    min={blockedRemovalStart || undefined}
+                    onChange={(event) =>
+                      setBlockedRemovalEnd(event.target.value)
+                    }
+                    className="rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-sm text-app-100 outline-none"
+                    aria-label="Data final para remoção"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isRemovingBlockedRange}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-400/35 bg-rose-500/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-60"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {isRemovingBlockedRange
+                      ? "Removendo..."
+                      : "Remover período"}
+                  </button>
+                </form>
+              </>
+            ) : null}
 
             {blockedDates.length === 0 ? (
               <p className="text-sm text-app-300">

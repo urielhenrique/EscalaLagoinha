@@ -22,7 +22,9 @@ services:
       - postgres
     environment:
       PORT: 3000
-      JWT_SECRET: troque-este-segredo-em-producao
+      JWT_SECRET: local-dev-jwt-secret-with-32-plus-characters
+      FRONTEND_URL: http://localhost:5174
+      CORS_ORIGINS: http://localhost:5174,http://localhost:5173
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/escala_lagoinha?schema=public
     ports:
       - "3000:3000"
