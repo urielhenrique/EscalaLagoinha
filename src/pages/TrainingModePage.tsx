@@ -175,8 +175,8 @@ const TRACKS: Track[] = [
         title: "Crie os ministérios",
         description: "Organize sua equipe por áreas de serviço",
         detail:
-          "Crie os ministérios da sua igreja (Louvor, Mídia, Recepção etc.) e defina os líderes responsáveis por cada um. A seção de Ministérios fica dentro das Configurações da Igreja.",
-        href: "/igreja/configuracoes#ministerios",
+          "Crie os ministérios da sua igreja (Louvor, Mídia, Recepção etc.) e organize a operação da equipe pela tela de gestão operacional.",
+        href: "/gestao-escalas",
         icon: <Users className="h-5 w-5 text-emerald-300" />,
       },
       {

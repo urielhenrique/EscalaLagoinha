@@ -27,6 +27,14 @@ const ministrySelect = {
 export class MinistriesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private isChurchManager(user: JwtPayload) {
+    return (
+      user.perfil === Perfil.ADMIN ||
+      user.perfil === Perfil.MASTER_ADMIN ||
+      user.perfil === Perfil.MASTER_PLATFORM_ADMIN
+    );
+  }
+
   private getChurchIdOrThrow(user: JwtPayload) {
     if (!user.churchId) {
       throw new ForbiddenException(
@@ -95,7 +103,7 @@ export class MinistriesService {
   async findAllVisible(user: JwtPayload) {
     const churchId = this.getChurchIdOrThrow(user);
 
-    if (user.perfil === Perfil.ADMIN) {
+    if (this.isChurchManager(user)) {
       return this.prisma.ministry.findMany({
         where: { churchId },
         orderBy: { nome: "asc" },
@@ -126,7 +134,7 @@ export class MinistriesService {
   async findByIdForUser(id: string, user: JwtPayload) {
     const churchId = this.getChurchIdOrThrow(user);
 
-    if (user.perfil === Perfil.ADMIN) {
+    if (this.isChurchManager(user)) {
       const ministry = await this.prisma.ministry.findFirst({
         where: { id, churchId },
         select: ministrySelect,

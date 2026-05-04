@@ -57,6 +57,14 @@ export class SchedulesService {
     private readonly auditLogsService: AuditLogsService,
   ) {}
 
+  private isChurchManager(user: JwtPayload) {
+    return (
+      user.perfil === Perfil.ADMIN ||
+      user.perfil === Perfil.MASTER_ADMIN ||
+      user.perfil === Perfil.MASTER_PLATFORM_ADMIN
+    );
+  }
+
   private getChurchIdOrThrow(user: JwtPayload) {
     if (!user.churchId) {
       throw new ForbiddenException(
@@ -231,7 +239,7 @@ export class SchedulesService {
       volunteerId: filters.volunteerId,
     };
 
-    if (user.perfil === Perfil.ADMIN) {
+    if (this.isChurchManager(user)) {
       return this.prisma.schedule.findMany({
         where,
         orderBy: [{ event: { dataInicio: "asc" } }, { createdAt: "asc" }],
@@ -272,7 +280,7 @@ export class SchedulesService {
       throw new ForbiddenException("Você não possui acesso a esta escala.");
     }
 
-    if (user.perfil === Perfil.ADMIN) {
+    if (this.isChurchManager(user)) {
       return schedule;
     }
 

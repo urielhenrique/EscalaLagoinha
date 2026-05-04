@@ -44,6 +44,39 @@ const fallbackBaseUrl = primaryBaseUrl.endsWith("/api")
   ? primaryBaseUrl.slice(0, -4)
   : null;
 
+type ApiErrorBody = {
+  message?: string;
+  errors?: string[];
+};
+
+function toApiError(error: unknown, fallbackMessage: string) {
+  if (error instanceof ApiError) {
+    return error;
+  }
+
+  if (axios.isAxiosError<ApiErrorBody>(error)) {
+    return new ApiError(
+      error.response?.data?.message || error.message || fallbackMessage,
+      error.response?.status,
+      error.response?.data?.errors,
+    );
+  }
+
+  if (error instanceof Error) {
+    return new ApiError(error.message, undefined);
+  }
+
+  return new ApiError(fallbackMessage, undefined);
+}
+
+function shouldRetryWithoutApiPrefix(error: ApiError) {
+  return (
+    error.status === 404 &&
+    Boolean(fallbackBaseUrl) &&
+    error.message === "Request failed with status code 404"
+  );
+}
+
 async function requestChurchesApi<T>(params: {
   method: "get" | "post" | "patch";
   path: string;
@@ -57,24 +90,30 @@ async function requestChurchesApi<T>(params: {
     });
     return response.data;
   } catch (error) {
-    if (
-      !(error instanceof ApiError) ||
-      error.status !== 404 ||
-      !fallbackBaseUrl
-    ) {
-      throw error;
+    const normalizedError = toApiError(
+      error,
+      "Erro inesperado ao consultar igrejas.",
+    );
+
+    if (!shouldRetryWithoutApiPrefix(normalizedError) || !fallbackBaseUrl) {
+      throw normalizedError;
     }
 
     const token = getAuthToken();
-    const fallbackResponse = await axios.request<ApiEnvelope<T>>({
-      method: params.method,
-      url: `${fallbackBaseUrl}${params.path}`,
-      data: params.data,
-      timeout: 15000,
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    });
 
-    return fallbackResponse.data;
+    try {
+      const fallbackResponse = await axios.request<ApiEnvelope<T>>({
+        method: params.method,
+        url: `${fallbackBaseUrl}${params.path}`,
+        data: params.data,
+        timeout: 15000,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+
+      return fallbackResponse.data;
+    } catch (fallbackError) {
+      throw toApiError(fallbackError, "Erro inesperado ao consultar igrejas.");
+    }
   }
 }
 

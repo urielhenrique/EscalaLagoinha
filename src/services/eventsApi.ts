@@ -27,3 +27,10 @@ export async function deleteEvent(id: string) {
   const response = await api.delete<ApiEnvelope<EventItem>>(`/events/${id}`);
   return response.data;
 }
+
+export async function seedDefaultEvents() {
+  const response = await api.post<ApiEnvelope<EventItem[]>>(
+    "/events/seed-defaults",
+  );
+  return response.data;
+}

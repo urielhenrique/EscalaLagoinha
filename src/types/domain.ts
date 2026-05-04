@@ -49,6 +49,15 @@ export type MinistryItem = {
   leaderId: string | null;
 };
 
+export type CreateMinistryPayload = {
+  nome: string;
+  descricao: string;
+  leaderId?: string;
+  memberIds?: string[];
+};
+
+export type UpdateMinistryPayload = Partial<CreateMinistryPayload>;
+
 export type UserItem = {
   id: string;
   nome: string;

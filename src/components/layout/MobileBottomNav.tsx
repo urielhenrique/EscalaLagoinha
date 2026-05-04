@@ -51,6 +51,13 @@ export function MobileBottomNav({ onMenuOpen }: MobileBottomNavProps) {
 
   useEffect(() => {
     const load = async () => {
+      if (!user?.churchId) {
+        setUnreadCount(0);
+        controllerRef.current?.abort();
+        controllerRef.current = null;
+        return;
+      }
+
       controllerRef.current?.abort();
       const ctrl = new AbortController();
       controllerRef.current = ctrl;
@@ -73,7 +80,7 @@ export function MobileBottomNav({ onMenuOpen }: MobileBottomNavProps) {
       window.clearInterval(timer);
       controllerRef.current?.abort();
     };
-  }, []);
+  }, [user?.churchId]);
 
   const actions =
     user?.perfil === "ADMIN" ||

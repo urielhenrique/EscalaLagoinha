@@ -16,7 +16,12 @@ import { StatusBadge } from "../components/ui/StatusBadge";
 import { useAuth } from "../hooks/useAuth";
 import { listEvents } from "../services/eventsApi";
 import { getErrorMessage } from "../services/api";
-import { listVisibleMinistries } from "../services/ministriesApi";
+import {
+  createMinistry,
+  deleteMinistry,
+  listVisibleMinistries,
+  seedDefaultMinistries,
+} from "../services/ministriesApi";
 import {
   cancelSchedule,
   createSchedule,
@@ -43,11 +48,21 @@ type FormValues = {
   status: ScheduleStatus;
 };
 
+type MinistryFormValues = {
+  nome: string;
+  descricao: string;
+};
+
 const initialForm: FormValues = {
   eventId: "",
   ministryId: "",
   volunteerId: "",
   status: "PENDENTE",
+};
+
+const initialMinistryForm: MinistryFormValues = {
+  nome: "",
+  descricao: "",
 };
 
 const statusOptions: ScheduleStatus[] = ["PENDENTE", "CONFIRMADO", "CANCELADO"];
@@ -57,7 +72,10 @@ type SortOption = "DATA_ASC" | "DATA_DESC" | "EVENTO_ASC" | "VOLUNTARIO_ASC";
 
 export function AdminSchedulesPage() {
   const { user } = useAuth();
-  const isAdmin = user?.perfil === "ADMIN";
+  const isAdmin =
+    user?.perfil === "ADMIN" ||
+    user?.perfil === "MASTER_ADMIN" ||
+    user?.perfil === "MASTER_PLATFORM_ADMIN";
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -75,10 +93,13 @@ export function AdminSchedulesPage() {
   const [page, setPage] = useState(1);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSavingMinistry, setIsSavingMinistry] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<ScheduleItem | null>(
     null,
   );
   const [form, setForm] = useState<FormValues>(initialForm);
+  const [ministryForm, setMinistryForm] =
+    useState<MinistryFormValues>(initialMinistryForm);
   const [suggestionsState, setSuggestionsState] = useState<{
     isLoading: boolean;
     data: ManualSmartSuggestions | null;
@@ -348,6 +369,80 @@ export function AdminSchedulesPage() {
     }
   };
 
+  const handleCreateMinistry = async () => {
+    if (!ministryForm.nome.trim() || !ministryForm.descricao.trim()) {
+      setError("Informe nome e descrição para cadastrar o ministério.");
+      return;
+    }
+
+    setIsSavingMinistry(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await createMinistry({
+        nome: ministryForm.nome.trim(),
+        descricao: ministryForm.descricao.trim(),
+      });
+      setSuccess("Ministério cadastrado com sucesso.");
+      setMinistryForm(initialMinistryForm);
+      await loadData();
+    } catch (requestError) {
+      setError(
+        getErrorMessage(
+          requestError,
+          "Não foi possível cadastrar o ministério.",
+        ),
+      );
+    } finally {
+      setIsSavingMinistry(false);
+    }
+  };
+
+  const handleSeedDefaultMinistries = async () => {
+    setIsSavingMinistry(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await seedDefaultMinistries();
+      setSuccess("Ministérios padrão criados com sucesso.");
+      await loadData();
+    } catch (requestError) {
+      setError(
+        getErrorMessage(
+          requestError,
+          "Não foi possível criar os ministérios padrão.",
+        ),
+      );
+    } finally {
+      setIsSavingMinistry(false);
+    }
+  };
+
+  const handleDeleteMinistry = async (ministry: MinistryItem) => {
+    const confirmed = window.confirm(
+      `Deseja remover o ministério ${ministry.nome}?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await deleteMinistry(ministry.id);
+      setSuccess("Ministério removido com sucesso.");
+      await loadData();
+    } catch (requestError) {
+      setError(
+        getErrorMessage(requestError, "Não foi possível remover o ministério."),
+      );
+    }
+  };
+
   if (!isAdmin) {
     return (
       <section className="space-y-5">
@@ -362,7 +457,8 @@ export function AdminSchedulesPage() {
             Acesso restrito
           </div>
           <p className="mt-2 text-sm text-amber-100/85">
-            Entre com um perfil ADMIN para criar, editar ou cancelar escalas.
+            Entre com um perfil ADMIN ou MASTER_ADMIN para criar, editar ou
+            cancelar escalas.
           </p>
         </div>
       </section>
@@ -421,6 +517,114 @@ export function AdminSchedulesPage() {
           <option value="VOLUNTARIO_ASC">Voluntário: A-Z</option>
         </select>
       </div>
+
+      {events.length === 0 ? (
+        <div className="rounded-2xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+          <p className="font-medium text-white">
+            Nenhum evento cadastrado ainda.
+          </p>
+          <p className="mt-1 text-sky-100/85">
+            Antes de criar uma escala, cadastre os eventos da igreja na tela de
+            eventos.
+          </p>
+          <div className="mt-3">
+            <a
+              href="/eventos"
+              className="inline-flex items-center gap-2 rounded-xl border border-sky-300/35 bg-sky-400/10 px-4 py-2 text-sm font-semibold text-sky-50 transition hover:bg-sky-400/20"
+            >
+              Ir para Eventos
+            </a>
+          </div>
+        </div>
+      ) : null}
+
+      <article className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-white">
+              Cadastro de ministérios
+            </h2>
+            <p className="mt-1 text-sm text-app-200">
+              Cadastre os ministérios que deseja usar nas escalas e eles
+              passarão a aparecer no seletor da nova escala.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleSeedDefaultMinistries()}
+            disabled={isSavingMinistry}
+            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-app-100 transition hover:bg-white/10 disabled:opacity-60"
+          >
+            Criar ministérios padrão
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1.4fr_auto]">
+          <input
+            value={ministryForm.nome}
+            onChange={(event) =>
+              setMinistryForm((current) => ({
+                ...current,
+                nome: event.target.value,
+              }))
+            }
+            placeholder="Nome do ministério"
+            className="rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-sm text-app-100 outline-none"
+          />
+          <input
+            value={ministryForm.descricao}
+            onChange={(event) =>
+              setMinistryForm((current) => ({
+                ...current,
+                descricao: event.target.value,
+              }))
+            }
+            placeholder="Descrição do ministério"
+            className="rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-sm text-app-100 outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => void handleCreateMinistry()}
+            disabled={isSavingMinistry}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-400/35 bg-brand-500/15 px-4 py-2 text-sm font-semibold text-brand-100 transition hover:bg-brand-500/20 disabled:opacity-60"
+          >
+            <Plus className="h-4 w-4" />
+            {isSavingMinistry ? "Salvando..." : "Adicionar"}
+          </button>
+        </div>
+
+        {ministries.length > 0 ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {ministries.map((ministry) => (
+              <div
+                key={ministry.id}
+                className="rounded-xl border border-white/10 bg-app-850/70 p-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-white">{ministry.nome}</p>
+                    <p className="mt-1 text-sm text-app-200">
+                      {ministry.descricao}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteMinistry(ministry)}
+                    className="rounded-lg border border-rose-400/35 bg-rose-500/10 px-2 py-1 text-xs text-rose-200 transition hover:bg-rose-500/20"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+            Nenhum ministério cadastrado ainda. Cadastre um ministério ou use o
+            botão de ministérios padrão.
+          </p>
+        )}
+      </article>
 
       {error ? (
         <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">

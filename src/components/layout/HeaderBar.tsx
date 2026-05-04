@@ -48,6 +48,14 @@ export function HeaderBar({ onMenuClick }: HeaderBarProps) {
   );
 
   const loadNotifications = async () => {
+    if (!user?.churchId) {
+      setNotifications([]);
+      setIsLoadingNotifications(false);
+      activeRequestRef.current?.abort();
+      activeRequestRef.current = null;
+      return;
+    }
+
     // Cancela a requisição anterior se ainda estiver em andamento.
     if (activeRequestRef.current) {
       activeRequestRef.current.abort();
@@ -91,7 +99,7 @@ export function HeaderBar({ onMenuClick }: HeaderBarProps) {
       // Cancela requisição pendente ao desmontar o componente.
       activeRequestRef.current?.abort();
     };
-  }, [pollingIntervalMs]);
+  }, [pollingIntervalMs, user?.churchId]);
 
   useEffect(() => {
     if (!isNotificationsOpen) {

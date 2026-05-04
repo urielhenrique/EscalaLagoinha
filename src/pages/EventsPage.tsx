@@ -10,6 +10,7 @@ import {
   createEvent,
   deleteEvent,
   listEvents,
+  seedDefaultEvents,
   updateEvent,
 } from "../services/eventsApi";
 import { getErrorMessage } from "../services/api";
@@ -43,10 +44,14 @@ function toIsoOrNull(value: string) {
 
 export function EventsPage() {
   const { user } = useAuth();
-  const isAdmin = user?.perfil === "ADMIN";
+  const isAdmin =
+    user?.perfil === "ADMIN" ||
+    user?.perfil === "MASTER_ADMIN" ||
+    user?.perfil === "MASTER_PLATFORM_ADMIN";
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSeedingDefaults, setIsSeedingDefaults] = useState(false);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<EventSort>("DATA_ASC");
@@ -232,6 +237,27 @@ export function EventsPage() {
     }
   };
 
+  const handleSeedDefaults = async () => {
+    setIsSeedingDefaults(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await seedDefaultEvents();
+      setSuccess("Eventos padrão criados com sucesso.");
+      await loadEvents();
+    } catch (requestError) {
+      setError(
+        getErrorMessage(
+          requestError,
+          "Não foi possível criar os eventos padrão.",
+        ),
+      );
+    } finally {
+      setIsSeedingDefaults(false);
+    }
+  };
+
   return (
     <section className="space-y-5">
       <SectionHeader
@@ -240,14 +266,26 @@ export function EventsPage() {
         description="Visualize e mantenha os eventos oficiais da igreja com início e fim definidos."
         action={
           isAdmin ? (
-            <button
-              type="button"
-              onClick={openCreateModal}
-              className="inline-flex items-center gap-2 rounded-xl border border-brand-400/35 bg-brand-500/15 px-4 py-2 text-sm font-semibold text-brand-100 transition hover:bg-brand-500/20"
-            >
-              <Plus className="h-4 w-4" />
-              Novo evento
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void handleSeedDefaults()}
+                disabled={isSeedingDefaults}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-app-100 transition hover:bg-white/10 disabled:opacity-60"
+              >
+                {isSeedingDefaults
+                  ? "Criando padrão..."
+                  : "Criar eventos padrão"}
+              </button>
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="inline-flex items-center gap-2 rounded-xl border border-brand-400/35 bg-brand-500/15 px-4 py-2 text-sm font-semibold text-brand-100 transition hover:bg-brand-500/20"
+              >
+                <Plus className="h-4 w-4" />
+                Novo evento
+              </button>
+            </div>
           ) : null
         }
       />
@@ -259,8 +297,8 @@ export function EventsPage() {
             Modo leitura
           </div>
           <p className="mt-2 text-sm text-amber-100/85">
-            Seu perfil pode visualizar eventos, mas apenas administradores
-            criam, editam e excluem.
+            Seu perfil pode visualizar eventos, mas apenas administradores da
+            operação criam, editam e excluem.
           </p>
         </div>
       ) : null}
