@@ -165,7 +165,7 @@ export function AdminSchedulesPage() {
       }
 
       const text = [
-        schedule.event.nome,
+        schedule.event.nome + " :" + schedule.event.dataInicio,
         schedule.ministry.nome,
         schedule.volunteer.nome,
       ]
