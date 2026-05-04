@@ -12,6 +12,10 @@ import { getErrorMessage } from "../services/api";
 import type { AttendanceItem } from "../types/domain";
 import { formatDateTime } from "../utils/date";
 
+function formatAttendanceEventLabel(item: Pick<AttendanceItem, "schedule">) {
+  return `${item.schedule.event.nome} · ${formatDateTime(item.schedule.event.dataInicio)}`;
+}
+
 const statusLabel: Record<string, string> = {
   CONFIRMADO: "Confirmado",
   PRESENTE: "Presente",
@@ -112,13 +116,10 @@ export function CheckInPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="font-display text-lg font-semibold text-white">
-                    {item.schedule.event.nome}
+                    {formatAttendanceEventLabel(item)}
                   </h3>
                   <p className="text-sm text-app-100">
                     {item.schedule.ministry.nome}
-                  </p>
-                  <p className="mt-1 text-xs text-app-200">
-                    {formatDateTime(item.schedule.event.dataInicio)}
                   </p>
                   <p className="mt-2 text-xs uppercase tracking-[0.12em] text-brand-100">
                     Status: {statusLabel[item.status ?? ""] ?? "Não definido"}

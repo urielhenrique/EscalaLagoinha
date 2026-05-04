@@ -18,6 +18,10 @@ import {
   isPastSchedule,
 } from "../utils/date";
 
+function formatScheduleEventLabel(schedule: Pick<ScheduleItem, "event">) {
+  return `${schedule.event.nome} · ${formatDateTime(schedule.event.dataInicio)}`;
+}
+
 type PeriodFilter = "PROXIMAS" | "PASSADAS" | "TODAS";
 type ViewMode = "CARDS" | "LISTA" | "CALENDARIO";
 type SortOption = "DATA_ASC" | "DATA_DESC" | "EVENTO_ASC";
@@ -283,7 +287,7 @@ export function MySchedulesPage() {
                     {formatWeekday(schedule.event.dataInicio)}
                   </p>
                   <h3 className="mt-1 font-display text-lg font-semibold text-white">
-                    {schedule.event.nome}
+                    {formatScheduleEventLabel(schedule)}
                   </h3>
                 </div>
                 <StatusBadge status={schedule.status} />
@@ -344,7 +348,7 @@ export function MySchedulesPage() {
               {paginatedSchedules.map((schedule) => (
                 <tr key={schedule.id} className="hover:bg-white/4">
                   <td className="px-4 py-3 font-medium text-white">
-                    {schedule.event.nome}
+                    {formatScheduleEventLabel(schedule)}
                   </td>
                   <td className="px-4 py-3 text-app-200">
                     {formatDateTime(schedule.event.dataInicio)}
@@ -393,7 +397,7 @@ export function MySchedulesPage() {
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="font-semibold text-white">
-                        {schedule.event.nome}
+                        {formatScheduleEventLabel(schedule)}
                       </p>
                       <StatusBadge status={schedule.status} />
                     </div>

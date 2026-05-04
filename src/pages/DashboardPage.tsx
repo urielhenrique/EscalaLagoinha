@@ -32,6 +32,10 @@ import type {
 } from "../types/domain";
 import { formatDateTime } from "../utils/date";
 
+function formatEventLabel(event: { nome: string; dataInicio: string }) {
+  return `${event.nome} · ${formatDateTime(event.dataInicio)}`;
+}
+
 function engagementClass(status: RankingItem["statusEngajamento"]) {
   if (status === "ALTO") {
     return "border-emerald-400/30 bg-emerald-500/15 text-emerald-100";
@@ -475,13 +479,10 @@ export function DashboardPage() {
               {volunteerData.proximaEscala ? (
                 <div className="mt-3 rounded-xl border border-white/10 bg-app-900/60 p-3">
                   <p className="font-medium text-white">
-                    {volunteerData.proximaEscala.event.nome}
+                    {formatEventLabel(volunteerData.proximaEscala.event)}
                   </p>
                   <p className="text-sm text-app-200">
-                    {volunteerData.proximaEscala.ministry.nome} ·{" "}
-                    {formatDateTime(
-                      volunteerData.proximaEscala.event.dataInicio,
-                    )}
+                    {volunteerData.proximaEscala.ministry.nome}
                   </p>
                 </div>
               ) : (
@@ -499,7 +500,7 @@ export function DashboardPage() {
                     key={item.id}
                     className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-app-100"
                   >
-                    {item.event.nome} · {item.ministry.nome}
+                    {formatEventLabel(item.event)} · {item.ministry.nome}
                   </li>
                 ))}
               </ul>

@@ -13,6 +13,11 @@ import type {
   AttendanceStatus,
   EventItem,
 } from "../types/domain";
+import { formatDateTime } from "../utils/date";
+
+function formatEventLabel(event: Pick<EventItem, "nome" | "dataInicio">) {
+  return `${event.nome} · ${formatDateTime(event.dataInicio)}`;
+}
 
 const statusOptions: AttendanceStatus[] = [
   "CONFIRMADO",
@@ -129,14 +134,14 @@ export function AttendanceManagePage() {
           >
             {events.map((event) => (
               <option key={event.id} value={event.id}>
-                {event.nome}
+                {formatEventLabel(event)}
               </option>
             ))}
           </select>
         </label>
         {selectedEvent ? (
           <p className="mt-2 text-xs text-app-200">
-            Evento selecionado: {selectedEvent.nome}
+            Evento selecionado: {formatEventLabel(selectedEvent)}
           </p>
         ) : null}
       </div>

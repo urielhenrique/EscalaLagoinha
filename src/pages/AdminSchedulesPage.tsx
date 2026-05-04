@@ -53,6 +53,10 @@ type MinistryFormValues = {
   descricao: string;
 };
 
+function formatEventLabel(event: Pick<EventItem, "nome" | "dataInicio">) {
+  return `${event.nome} • ${formatDateTime(event.dataInicio)}`;
+}
+
 const initialForm: FormValues = {
   eventId: "",
   ministryId: "",
@@ -165,7 +169,8 @@ export function AdminSchedulesPage() {
       }
 
       const text = [
-        schedule.event.nome + " :" + schedule.event.dataInicio,
+        schedule.event.nome,
+        formatDateTime(schedule.event.dataInicio),
         schedule.ministry.nome,
         schedule.volunteer.nome,
       ]
@@ -348,7 +353,7 @@ export function AdminSchedulesPage() {
 
   const handleCancel = async (schedule: ScheduleItem) => {
     const confirmed = window.confirm(
-      `Deseja cancelar a escala de ${schedule.volunteer.nome} para ${schedule.event.nome}?`,
+      `Deseja cancelar a escala de ${schedule.volunteer.nome} para ${formatEventLabel(schedule.event)}?`,
     );
 
     if (!confirmed) {
@@ -673,10 +678,10 @@ export function AdminSchedulesPage() {
                   <tr key={schedule.id} className="hover:bg-white/4">
                     <td className="px-4 py-3">
                       <p className="font-medium text-white">
-                        {schedule.event.nome}
+                        {formatEventLabel(schedule.event)}
                       </p>
                       <p className="text-xs text-app-200">
-                        {formatDateTime(schedule.event.dataFim)}
+                        Fim: {formatDateTime(schedule.event.dataFim)}
                       </p>
                     </td>
                     <td className="px-4 py-3 text-app-100">
@@ -773,7 +778,7 @@ export function AdminSchedulesPage() {
               <option value="">Selecione</option>
               {events.map((event) => (
                 <option key={event.id} value={event.id}>
-                  {event.nome}
+                  {formatEventLabel(event)}
                 </option>
               ))}
             </select>

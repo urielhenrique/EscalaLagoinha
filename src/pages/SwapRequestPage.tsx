@@ -14,6 +14,10 @@ import {
 import type { ScheduleItem } from "../types/domain";
 import { formatDateTime, formatTimeRange } from "../utils/date";
 
+function formatScheduleEventLabel(schedule: Pick<ScheduleItem, "event">) {
+  return `${schedule.event.nome} · ${formatDateTime(schedule.event.dataInicio)}`;
+}
+
 export function SwapRequestPage() {
   const { user } = useAuth();
   const [mySchedules, setMySchedules] = useState<ScheduleItem[]>([]);
@@ -149,8 +153,7 @@ export function SwapRequestPage() {
             ) : null}
             {mySchedules.map((schedule) => (
               <option key={schedule.id} value={schedule.id}>
-                {schedule.event.nome} · {schedule.ministry.nome} ·{" "}
-                {formatDateTime(schedule.event.dataInicio)}
+                {formatScheduleEventLabel(schedule)} · {schedule.ministry.nome}
               </option>
             ))}
           </select>
@@ -161,7 +164,7 @@ export function SwapRequestPage() {
         <div className="rounded-2xl border border-brand-400/25 bg-brand-500/10 px-4 py-3 text-sm text-brand-100">
           <p className="font-semibold">Escala selecionada</p>
           <p className="mt-1">
-            {selectedRequesterShift.event.nome} ·{" "}
+            {formatScheduleEventLabel(selectedRequesterShift)} ·{" "}
             {selectedRequesterShift.ministry.nome} ·{" "}
             {formatTimeRange(
               selectedRequesterShift.event.dataInicio,
@@ -218,10 +221,15 @@ export function SwapRequestPage() {
                 <StatusBadge status={candidate.status} />
               </div>
 
-              <p className="font-medium text-app-100">{candidate.event.nome}</p>
+              <p className="font-medium text-app-100">
+                {formatScheduleEventLabel(candidate)}
+              </p>
               <p className="text-sm text-app-200">{candidate.ministry.nome}</p>
               <p className="mt-1 text-sm text-app-200">
-                {formatDateTime(candidate.event.dataInicio)}
+                {formatTimeRange(
+                  candidate.event.dataInicio,
+                  candidate.event.dataFim,
+                )}
               </p>
 
               <button
