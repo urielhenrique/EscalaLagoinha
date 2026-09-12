@@ -262,7 +262,7 @@ export class ChurchesService {
     return this.prisma.user.findMany({
       where: {
         churchId,
-        perfil: { in: [Perfil.ADMIN, Perfil.MASTER_ADMIN, Perfil.VOLUNTARIO] },
+        perfil: { in: [Perfil.ADMIN, Perfil.MASTER_ADMIN] },
         ativo: true,
       },
       orderBy: [{ perfil: "desc" }, { nome: "asc" }],

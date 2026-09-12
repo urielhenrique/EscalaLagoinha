@@ -146,13 +146,6 @@ export const menuItems: MenuItem[] = [
     icon: "ranking",
   },
   {
-    key: "ia-insights",
-    label: "IA Insights",
-    path: "/ia-insights",
-    icon: "ia-insights",
-    allowedProfiles: ["ADMIN", "MASTER_ADMIN"],
-  },
-  {
     key: "painel-estrategico",
     label: "Painel Estratégico",
     path: "/painel-estrategico",

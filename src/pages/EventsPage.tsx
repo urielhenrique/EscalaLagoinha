@@ -14,14 +14,28 @@ import {
   updateEvent,
 } from "../services/eventsApi";
 import { getErrorMessage } from "../services/api";
-import type { EventItem } from "../types/domain";
+import type {
+  EventItem,
+  RecurrenceDay,
+  RecurrenceEventResponse,
+} from "../types/domain";
 import { formatDateTime, toInputDateTime } from "../utils/date";
+import {
+  calculateOccurrences,
+  formatDateShort,
+  toIsoDate,
+} from "../utils/recurrence";
+import { SeriesDetailModal } from "../components/ui/SeriesDetailModal";
 
 type EventForm = {
   nome: string;
   descricao: string;
   dataInicio: string;
   dataFim: string;
+  isRecurring: boolean;
+  recurrenceStart: string;
+  recurrenceEnd: string;
+  selectedDays: RecurrenceDay[];
 };
 
 const initialForm: EventForm = {
@@ -29,10 +43,26 @@ const initialForm: EventForm = {
   descricao: "",
   dataInicio: "",
   dataFim: "",
+  isRecurring: false,
+  recurrenceStart: "",
+  recurrenceEnd: "",
+  selectedDays: [],
 };
 
 const PAGE_SIZE = 6;
 type EventSort = "DATA_ASC" | "DATA_DESC" | "NOME_ASC";
+
+const DAY_OPTIONS: Array<{ value: RecurrenceDay; label: string }> = [
+  { value: "DOMINGO", label: "Dom" },
+  { value: "SEGUNDA", label: "Seg" },
+  { value: "TERCA", label: "Ter" },
+  { value: "QUARTA", label: "Qua" },
+  { value: "QUINTA", label: "Qui" },
+  { value: "SEXTA", label: "Sex" },
+  { value: "SABADO", label: "Sab" },
+];
+
+const MAX_PREVIEW = 10;
 
 function toIsoOrNull(value: string) {
   if (!value) {
@@ -40,6 +70,12 @@ function toIsoOrNull(value: string) {
   }
 
   return new Date(value).toISOString();
+}
+
+function isRecurrenceResponse(
+  result: EventItem | RecurrenceEventResponse,
+): result is RecurrenceEventResponse {
+  return "totalEvents" in result;
 }
 
 export function EventsPage() {
@@ -62,6 +98,10 @@ export function EventsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
   const [form, setForm] = useState<EventForm>(initialForm);
+
+  const [isSeriesModalOpen, setIsSeriesModalOpen] = useState(false);
+  const [seriesEvent, setSeriesEvent] = useState<EventItem | null>(null);
+  const [seriesRefreshKey, setSeriesRefreshKey] = useState(0);
 
   const loadEvents = async () => {
     setIsLoading(true);
@@ -115,7 +155,7 @@ export function EventsPage() {
 
       return (
         new Date(first.dataInicio).getTime() -
-        new Date(second.dataInicio).getTime()
+        new Date(first.dataInicio).getTime()
       );
     });
 
@@ -139,6 +179,21 @@ export function EventsPage() {
     }
   }, [page, totalPages]);
 
+  const previewOccurrences = useMemo(() => {
+    if (!form.isRecurring) {
+      return [];
+    }
+    return calculateOccurrences(
+      form.recurrenceStart,
+      form.recurrenceEnd,
+      form.selectedDays,
+    );
+  }, [form.isRecurring, form.recurrenceStart, form.recurrenceEnd, form.selectedDays]);
+
+  const previewTotal = previewOccurrences.length;
+  const previewVisible = previewOccurrences.slice(0, MAX_PREVIEW);
+  const previewRemaining = Math.max(0, previewTotal - MAX_PREVIEW);
+
   const openCreateModal = () => {
     setEditingEvent(null);
     setForm(initialForm);
@@ -154,6 +209,10 @@ export function EventsPage() {
       descricao: event.descricao,
       dataInicio: toInputDateTime(event.dataInicio),
       dataFim: toInputDateTime(event.dataFim),
+      isRecurring: false,
+      recurrenceStart: "",
+      recurrenceEnd: "",
+      selectedDays: [],
     });
     setError(null);
     setSuccess(null);
@@ -166,17 +225,70 @@ export function EventsPage() {
     setForm(initialForm);
   };
 
-  const handleSave = async () => {
+  const toggleDay = (day: RecurrenceDay) => {
+    setForm((current) => {
+      const isSelected = current.selectedDays.includes(day);
+      return {
+        ...current,
+        selectedDays: isSelected
+          ? current.selectedDays.filter((d) => d !== day)
+          : [...current.selectedDays, day],
+      };
+    });
+  };
+
+  const validateForm = (): string | null => {
     if (!form.nome || !form.descricao || !form.dataInicio || !form.dataFim) {
-      setError("Preencha todos os campos obrigatórios para salvar o evento.");
-      return;
+      return "Preencha todos os campos obrigatórios para salvar o evento.";
     }
 
     const dataInicioIso = toIsoOrNull(form.dataInicio);
     const dataFimIso = toIsoOrNull(form.dataFim);
 
     if (!dataInicioIso || !dataFimIso) {
-      setError("Datas inválidas. Verifique os horários informados.");
+      return "Datas inválidas. Verifique os horários informados.";
+    }
+
+    if (new Date(dataFimIso) <= new Date(dataInicioIso)) {
+      return "A data final deve ser posterior à data inicial.";
+    }
+
+    if (form.isRecurring) {
+      if (!form.recurrenceStart) {
+        return "Informe a data inicial da recorrência.";
+      }
+
+      if (!form.recurrenceEnd) {
+        return "Informe a data final da recorrência.";
+      }
+
+      const recStartIso = toIsoDate(form.recurrenceStart);
+      const recEndIso = toIsoDate(form.recurrenceEnd);
+
+      if (new Date(recEndIso) < new Date(recStartIso)) {
+        return "A data final da recorrência deve ser maior ou igual à data inicial.";
+      }
+
+      if (form.selectedDays.length === 0) {
+        return "Selecione pelo menos um dia da semana.";
+      }
+
+      if (previewTotal > 52) {
+        return "O período selecionado gera mais de 52 ocorrências.";
+      }
+
+      if (previewTotal === 0) {
+        return "Nenhuma ocorrência válida gerada para a configuração informada.";
+      }
+    }
+
+    return null;
+  };
+
+  const handleSave = async () => {
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -189,18 +301,45 @@ export function EventsPage() {
         await updateEvent(editingEvent.id, {
           nome: form.nome,
           descricao: form.descricao,
-          dataInicio: dataInicioIso,
-          dataFim: dataFimIso,
+          dataInicio: toIsoOrNull(form.dataInicio)!,
+          dataFim: toIsoOrNull(form.dataFim)!,
         });
-        setSuccess("Evento atualizado com sucesso.");
+        setSuccess(
+          editingEvent.recurrenceGroupId
+            ? "Esta alteração foi aplicada somente a esta ocorrência."
+            : "Evento atualizado com sucesso.",
+        );
+        if (editingEvent.recurrenceGroupId) {
+          setSeriesRefreshKey((k) => k + 1);
+        }
       } else {
-        await createEvent({
+        const payload = {
           nome: form.nome,
           descricao: form.descricao,
-          dataInicio: dataInicioIso,
-          dataFim: dataFimIso,
-        });
-        setSuccess("Evento criado com sucesso.");
+          dataInicio: toIsoOrNull(form.dataInicio)!,
+          dataFim: toIsoOrNull(form.dataFim)!,
+          ...(form.isRecurring
+            ? {
+                recurrence: {
+                  type: "WEEKLY" as const,
+                  startDate: toIsoDate(form.recurrenceStart),
+                  endDate: toIsoDate(form.recurrenceEnd),
+                  daysOfWeek: form.selectedDays,
+                },
+              }
+            : {}),
+        };
+
+        const response = await createEvent(payload);
+        const result = response.data;
+
+        if (isRecurrenceResponse(result)) {
+          setSuccess(
+            `${result.totalEvents} eventos foram criados com sucesso.`,
+          );
+        } else {
+          setSuccess("Evento criado com sucesso.");
+        }
       }
 
       await loadEvents();
@@ -215,9 +354,11 @@ export function EventsPage() {
   };
 
   const handleDelete = async (event: EventItem) => {
-    const confirmed = window.confirm(
-      `Deseja excluir o evento ${event.nome}? Esta ação não pode ser desfeita.`,
-    );
+    const message = event.recurrenceGroupId
+      ? `Deseja excluir esta ocorrência? Esta ação excluirá somente esta ocorrência da série. Esta ação não pode ser desfeita.`
+      : `Deseja excluir o evento ${event.nome}? Esta ação não pode ser desfeita.`;
+
+    const confirmed = window.confirm(message);
 
     if (!confirmed) {
       return;
@@ -228,7 +369,14 @@ export function EventsPage() {
 
     try {
       await deleteEvent(event.id);
-      setSuccess("Evento removido com sucesso.");
+      setSuccess(
+        event.recurrenceGroupId
+          ? "Ocorrência removida com sucesso."
+          : "Evento removido com sucesso.",
+      );
+      if (event.recurrenceGroupId) {
+        setSeriesRefreshKey((k) => k + 1);
+      }
       await loadEvents();
     } catch (requestError) {
       setError(
@@ -256,6 +404,37 @@ export function EventsPage() {
     } finally {
       setIsSeedingDefaults(false);
     }
+  };
+
+  const openSeriesDetail = (event: EventItem) => {
+    setSeriesEvent(event);
+    setIsSeriesModalOpen(true);
+  };
+
+  const handleSelectOccurrence = (occurrence: EventItem) => {
+    openEditModal(occurrence);
+  };
+
+  const handleDeleteOccurrence = (occurrence: EventItem) => {
+    void handleDelete(occurrence);
+  };
+
+  const getEventBadge = (event: EventItem) => {
+    if (event.recurrenceType === "WEEKLY" && event.recurrenceGroupId) {
+      return (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            openSeriesDetail(event);
+          }}
+          className="inline-flex items-center gap-1 rounded-lg bg-brand-500/15 px-2 py-0.5 text-xs font-medium text-brand-200 transition hover:bg-brand-500/25"
+        >
+          Recorrente
+        </button>
+      );
+    }
+    return null;
   };
 
   return (
@@ -358,9 +537,23 @@ export function EventsPage() {
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="font-display text-xl font-semibold text-white">
-                    {event.nome}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    {event.recurrenceType === "WEEKLY" &&
+                    event.recurrenceGroupId ? (
+                      <button
+                        type="button"
+                        onClick={() => openSeriesDetail(event)}
+                        className="font-display text-xl font-semibold text-white text-left transition hover:text-brand-200"
+                      >
+                        {event.nome}
+                      </button>
+                    ) : (
+                      <h3 className="font-display text-xl font-semibold text-white">
+                        {event.nome}
+                      </h3>
+                    )}
+                    {getEventBadge(event)}
+                  </div>
                   <p className="mt-2 line-clamp-2 text-sm text-app-200">
                     {event.descricao}
                   </p>
@@ -497,8 +690,146 @@ export function EventsPage() {
               />
             </label>
           </div>
+
+          {!editingEvent ? (
+            <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
+              <label className="flex items-center gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.isRecurring}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      isRecurring: event.target.checked,
+                      recurrenceStart: event.target.checked
+                        ? current.dataInicio.split("T")[0]
+                        : "",
+                      recurrenceEnd: event.target.checked
+                        ? current.dataFim.split("T")[0]
+                        : "",
+                      selectedDays: event.target.checked
+                        ? current.selectedDays
+                        : [],
+                    }))
+                  }
+                  className="h-4 w-4 rounded border-white/20 bg-app-850 text-brand-500 accent-brand-500"
+                />
+                <span className="text-app-200">Evento recorrente</span>
+              </label>
+
+              {form.isRecurring ? (
+                <div className="space-y-3 pt-2">
+                  <p className="text-xs text-app-300">
+                    Serão criadas ocorrências individuais para cada data
+                    selecionada. Limite máximo: 52 ocorrências por série.
+                  </p>
+
+                  <div className="space-y-1 text-sm">
+                    <span className="text-app-200">Frequência</span>
+                    <div className="rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-app-100">
+                      Semanal
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-sm">
+                    <span className="text-app-200">Dias da semana</span>
+                    <div className="flex flex-wrap gap-2" role="group" aria-label="Dias da semana">
+                      {DAY_OPTIONS.map((day) => (
+                        <button
+                          key={day.value}
+                          type="button"
+                          onClick={() => toggleDay(day.value)}
+                          aria-pressed={form.selectedDays.includes(day.value)}
+                          className={`inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                            form.selectedDays.includes(day.value)
+                              ? "border border-brand-400/35 bg-brand-500/20 text-brand-100"
+                              : "border border-white/10 bg-white/5 text-app-200 hover:bg-white/10"
+                          }`}
+                        >
+                          {day.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <label className="block space-y-1 text-sm">
+                      <span className="text-app-200">
+                        Data inicial da recorrência
+                      </span>
+                      <input
+                        type="date"
+                        value={form.recurrenceStart}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            recurrenceStart: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-app-100 outline-none"
+                      />
+                    </label>
+
+                    <label className="block space-y-1 text-sm">
+                      <span className="text-app-200">
+                        Data final da recorrência
+                      </span>
+                      <input
+                        type="date"
+                        value={form.recurrenceEnd}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            recurrenceEnd: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-app-100 outline-none"
+                      />
+                    </label>
+                  </div>
+
+                  {previewTotal > 0 ? (
+                    <div className="space-y-1 text-sm">
+                      <span className="text-app-200">
+                        Prévia das ocorrências ({previewTotal} total)
+                      </span>
+                      <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-white/10 bg-app-850 px-3 py-2">
+                        {previewVisible.map((date, index) => (
+                          <div
+                            key={index}
+                            className="text-xs text-app-100"
+                          >
+                            {formatDateShort(date)}
+                          </div>
+                        ))}
+                        {previewRemaining > 0 ? (
+                          <div className="text-xs text-app-300">
+                            ... e mais {previewRemaining} ocorrências
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </Modal>
+
+      {seriesEvent ? (
+        <SeriesDetailModal
+          isOpen={isSeriesModalOpen}
+          currentEvent={seriesEvent}
+          refreshKey={seriesRefreshKey}
+          onClose={() => {
+            setIsSeriesModalOpen(false);
+            setSeriesEvent(null);
+          }}
+          onSelectOccurrence={handleSelectOccurrence}
+          onDeleteOccurrence={handleDeleteOccurrence}
+        />
+      ) : null}
     </section>
   );
 }

@@ -63,7 +63,7 @@ async function seedChurches() {
 }
 
 async function seedUsers(churchId: string) {
-  const passwordHash = await bcrypt.hash("admin123", 10);
+  const passwordHash = await bcrypt.hash("Admin@123!", 10);
 
   // ─── MASTER ADMIN ──────────────────────────────────────────────────────────
   await prisma.user.upsert({

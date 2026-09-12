@@ -98,6 +98,7 @@ export class SwapRequestsService {
 
   private async assertNoEventConflict(params: {
     volunteerId: string;
+    churchId: string;
     targetEvent: {
       dataInicio: Date;
       dataFim: Date;
@@ -107,6 +108,7 @@ export class SwapRequestsService {
     const conflict = await this.prisma.schedule.findFirst({
       where: {
         volunteerId: params.volunteerId,
+        churchId: params.churchId,
         status: { in: [ScheduleStatus.CONFIRMADO, ScheduleStatus.PENDENTE] },
         id: { notIn: params.excludeScheduleIds },
         event: {
@@ -390,6 +392,7 @@ export class SwapRequestsService {
 
     await this.assertNoEventConflict({
       volunteerId: request.requestedVolunteerId,
+      churchId,
       targetEvent: requesterShift.event,
       excludeScheduleIds: [request.requestedShiftId, request.requesterShiftId],
     });
@@ -403,6 +406,7 @@ export class SwapRequestsService {
 
     await this.assertNoEventConflict({
       volunteerId: request.requesterId,
+      churchId,
       targetEvent: requestedShift.event,
       excludeScheduleIds: [request.requestedShiftId, request.requesterShiftId],
     });
@@ -441,6 +445,7 @@ export class SwapRequestsService {
 
       await this.notificationsService.notifySwapAutoCompletedToLeader({
         ministryId: requesterShift.ministryId,
+        churchId,
         requesterName: request.requester.nome,
         requestedVolunteerName: request.requestedVolunteer.nome,
         requesterEventName: requesterShift.event.nome,

@@ -10,6 +10,7 @@ import {
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
+  private readonly isProduction = process.env.NODE_ENV === "production";
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
@@ -60,12 +61,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
       );
     }
 
-    response.status(status).json({
+    const responseBody: Record<string, unknown> = {
       success: false,
       message: status >= 500 ? "Erro interno do servidor." : message,
       errors,
       timestamp: new Date().toISOString(),
-      path: request.url,
-    });
+    };
+
+    if (!this.isProduction) {
+      responseBody.path = request.url;
+    }
+
+    response.status(status).json(responseBody);
   }
 }

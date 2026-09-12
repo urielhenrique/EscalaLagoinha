@@ -35,6 +35,7 @@ export class AuthController {
 
   @Public()
   @Post("register")
+  @Throttle({ auth: { limit: 3, ttl: 60000 } })
   @ApiOperation({ summary: "Registrar novo voluntário (inicia como PENDENTE)" })
   @ApiBody({ type: RegisterDto })
   @ApiOkResponse({ description: "Cadastro realizado — aguardando aprovação." })
@@ -45,6 +46,7 @@ export class AuthController {
 
   @Public()
   @Post("onboarding")
+  @Throttle({ auth: { limit: 1, ttl: 86400000 } })
   @ApiOperation({ summary: "Onboarding inicial de igreja e admin" })
   @ApiBody({ type: OnboardingChurchDto })
   @ApiOkResponse({ description: "Onboarding concluído com sucesso." })

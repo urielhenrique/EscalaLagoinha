@@ -1,6 +1,5 @@
 import {
   Bell,
-  BrainCircuit,
   Building2,
   CalendarCheck2,
   CalendarClock,
@@ -54,7 +53,6 @@ const menuIconMap = {
   auditoria: ShieldCheck,
   relatorios: FileBarChart2,
   ranking: Trophy,
-  "ia-insights": BrainCircuit,
   ministerios: Building2,
   igrejas: Building2,
   "config-igreja": ShieldCheck,

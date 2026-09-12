@@ -6,6 +6,7 @@ import {
   updateCurrentChurchSettings,
 } from "../services/churchesApi";
 import { getErrorMessage } from "../services/api";
+import { GoogleCalendarSection } from "../components/google/GoogleCalendarSection";
 
 type SettingsForm = {
   customChurchName: string;
@@ -286,6 +287,8 @@ export function ChurchSettingsPage() {
           </div>
         </article>
       )}
+
+      <GoogleCalendarSection />
     </section>
   );
 }

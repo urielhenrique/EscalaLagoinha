@@ -117,35 +117,60 @@ enum FeedbackStatus {
   FECHADO
 }
 
+enum GoogleSyncStatus {
+  NONE
+  PENDING
+  SYNCED
+  ERROR
+}
+
 model User {
-  id            String     @id @default(uuid())
-  nome          String
-  email         String     @unique
-  senha         String
-  telefone      String
-  foto          String?
-  perfil        Perfil     @default(VOLUNTARIO)
-  status        UserStatus @default(ATIVO)
-  ativo         Boolean    @default(true)
-  churchId      String?
-  church        Church?    @relation(fields: [churchId], references: [id], onDelete: SetNull)
-  ledMinistries Ministry[] @relation("MinistryLeader")
-  ministries    Ministry[] @relation("MinistryMembers")
-  schedules     Schedule[]
+  id                String     @id @default(uuid())
+  nome              String
+  email             String     @unique
+  senha             String
+  telefone          String
+  foto              String?
+  perfil            Perfil     @default(VOLUNTARIO)
+  status            UserStatus @default(ATIVO)
+  ativo             Boolean    @default(true)
+  passwordChangedAt DateTime?
+  churchId          String?
+  church            Church?    @relation(fields: [churchId], references: [id], onDelete: SetNull)
+  ledMinistries     Ministry[] @relation("MinistryLeader")
+  ministries        Ministry[] @relation("MinistryMembers")
+  schedules         Schedule[]
   sentSwapRequests     SwapRequest[] @relation("SwapRequester")
   receivedSwapRequests SwapRequest[] @relation("SwapRequestedVolunteer")
-  notifications Notification[]
+  notifications     Notification[]
   passwordResetTokens PasswordResetToken[]
-  availabilities VolunteerAvailability[]
-  blockedDates BlockedDate[]
+  availabilities    VolunteerAvailability[]
+  blockedDates      BlockedDate[]
   ministryPreferences VolunteerMinistryPreference[]
   attendanceRecords AttendanceRecord[] @relation("AttendanceVolunteer")
   markedAttendances AttendanceRecord[] @relation("AttendanceMarker")
-  auditLogs AuditLog[]
-  feedbacks UserFeedback[]
-  createdAt     DateTime   @default(now())
+  auditLogs         AuditLog[]
+  feedbacks         UserFeedback[]
+  googleCalendarConnection GoogleCalendarConnection?
+  createdAt         DateTime   @default(now())
 
   @@index([churchId])
+}
+
+model GoogleCalendarConnection {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  googleAccountId String?
+  accessTokenEnc  String
+  refreshTokenEnc String
+  expiresAt       DateTime
+  scope           String
+  calendarId      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model Ministry {
@@ -166,19 +191,35 @@ model Ministry {
   @@unique([churchId, nome])
 }
 
+enum RecurrenceType {
+  NONE
+  WEEKLY
+}
+
 model Event {
-  id          String     @id @default(uuid())
-  nome        String
-  descricao   String
-  churchId    String?
-  church      Church?    @relation(fields: [churchId], references: [id], onDelete: SetNull)
-  dataInicio  DateTime
-  dataFim     DateTime
-  recorrencia String?
-  schedules   Schedule[]
-  createdAt   DateTime   @default(now())
+  id               String          @id @default(uuid())
+  nome             String
+  descricao        String
+  churchId         String?
+  church           Church?         @relation(fields: [churchId], references: [id], onDelete: SetNull)
+  dataInicio       DateTime
+  dataFim          DateTime
+  recorrencia      String?
+  recurrenceGroupId String?
+  recurrenceType   RecurrenceType  @default(NONE)
+  recurrenceDays   String[]
+  recurrenceStart  DateTime?
+  recurrenceEnd    DateTime?
+  recurrenceIndex  Int?
+  googleEventId    String?
+  googleSyncStatus GoogleSyncStatus @default(NONE)
+  lastSyncedAt     DateTime?
+  googleSyncError  String?
+  schedules        Schedule[]
+  createdAt        DateTime        @default(now())
 
   @@index([churchId])
+  @@index([recurrenceGroupId])
 }
 
 model Schedule {

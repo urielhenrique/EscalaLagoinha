@@ -21,6 +21,7 @@ import { SchedulesModule } from "./schedules/schedules.module";
 import { SmartSchedulerModule } from "./smart-scheduler/smart-scheduler.module";
 import { SwapRequestsModule } from "./swap-requests/swap-requests.module";
 import { UsersModule } from "./users/users.module";
+import { GoogleCalendarModule } from "./integrations/google-calendar/google-calendar.module";
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { UsersModule } from "./users/users.module";
     SmartSchedulerModule,
     SwapRequestsModule,
     HelpCenterModule,
+    GoogleCalendarModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

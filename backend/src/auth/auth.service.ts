@@ -77,6 +77,16 @@ export class AuthService {
   }
 
   async onboardChurch(dto: OnboardingChurchDto) {
+    const activeChurchCount = await this.prisma.church.count({
+      where: { ativo: true },
+    });
+
+    if (activeChurchCount > 0) {
+      throw new BadRequestException(
+        "Onboarding público indisponível. Peça ao administrador da plataforma para criar uma nova igreja.",
+      );
+    }
+
     const existingChurch = await this.prisma.church.findUnique({
       where: { slug: dto.churchSlug },
       select: { id: true },

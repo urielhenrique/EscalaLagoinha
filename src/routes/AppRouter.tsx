@@ -110,11 +110,6 @@ const RankingPage = lazy(() =>
     default: module.RankingPage,
   })),
 );
-const IAInsightsPage = lazy(() =>
-  import("../pages/IAInsightsPage").then((module) => ({
-    default: module.IAInsightsPage,
-  })),
-);
 const CheckInPage = lazy(() =>
   import("../pages/CheckInPage").then((module) => ({
     default: module.CheckInPage,
@@ -263,7 +258,6 @@ export function AppRouter() {
           element={withShell(<NotificationsPage />)}
         />
         <Route path="/ranking" element={withShell(<RankingPage />)} />
-        <Route path="/ia-insights" element={withShell(<IAInsightsPage />)} />
         <Route path="/check-in" element={withShell(<CheckInPage />)} />
         <Route path="/ajuda" element={withShell(<HelpCenterPage />)} />
         <Route path="/ajuda/feedback" element={withShell(<FeedbackPage />)} />

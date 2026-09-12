@@ -46,8 +46,13 @@ async function bootstrap() {
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void,
     ) => {
-      if (!origin) {
+      if (!origin && !isProduction) {
         callback(null, true);
+        return;
+      }
+
+      if (!origin) {
+        callback(new Error("CORS: origem não informada não é permitida em produção."));
         return;
       }
 

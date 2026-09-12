@@ -32,6 +32,24 @@ export type AttendanceStatus =
 
 export type AbsenceRisk = "BAIXO" | "MEDIO" | "ALTO";
 
+export type RecurrenceType = "NONE" | "WEEKLY";
+
+export type RecurrenceDay =
+  | "DOMINGO"
+  | "SEGUNDA"
+  | "TERCA"
+  | "QUARTA"
+  | "QUINTA"
+  | "SEXTA"
+  | "SABADO";
+
+export type RecurrenceConfig = {
+  type: RecurrenceType;
+  startDate: string;
+  endDate: string;
+  daysOfWeek: RecurrenceDay[];
+};
+
 export type EventItem = {
   id: string;
   nome: string;
@@ -39,7 +57,19 @@ export type EventItem = {
   dataInicio: string;
   dataFim: string;
   recorrencia: string | null;
+  recurrenceGroupId: string | null;
+  recurrenceType: RecurrenceType;
+  recurrenceDays: RecurrenceDay[];
+  recurrenceStart: string | null;
+  recurrenceEnd: string | null;
+  recurrenceIndex: number | null;
   createdAt: string;
+};
+
+export type RecurrenceEventResponse = {
+  recurrenceGroupId: string;
+  totalEvents: number;
+  events: EventItem[];
 };
 
 export type MinistryItem = {
@@ -601,6 +631,7 @@ export type CreateEventPayload = {
   dataInicio: string;
   dataFim: string;
   recorrencia?: string;
+  recurrence?: RecurrenceConfig;
 };
 
 export type UpdateEventPayload = Partial<CreateEventPayload>;

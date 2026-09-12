@@ -122,6 +122,7 @@ export class SchedulesService {
   private async assertNoTimeConflict(params: {
     eventId: string;
     volunteerId: string;
+    churchId: string;
     excludingScheduleId?: string;
   }) {
     const targetEvent = await this.prisma.event.findUnique({
@@ -136,6 +137,7 @@ export class SchedulesService {
     const conflictingSchedule = await this.prisma.schedule.findFirst({
       where: {
         volunteerId: params.volunteerId,
+        churchId: params.churchId,
         status: { in: [ScheduleStatus.CONFIRMADO, ScheduleStatus.PENDENTE] },
         id:
           params.excludingScheduleId !== undefined
@@ -184,6 +186,7 @@ export class SchedulesService {
     await this.assertNoTimeConflict({
       eventId: dto.eventId,
       volunteerId: dto.volunteerId,
+      churchId,
     });
 
     try {
@@ -341,6 +344,7 @@ export class SchedulesService {
       await this.assertNoTimeConflict({
         eventId,
         volunteerId,
+        churchId,
         excludingScheduleId: id,
       });
     }

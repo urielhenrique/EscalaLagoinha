@@ -96,7 +96,10 @@ export class PasswordResetService {
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: resetToken.userId },
-        data: { senha: novoHash },
+        data: {
+          senha: novoHash,
+          passwordChangedAt: new Date(),
+        },
       }),
       this.prisma.passwordResetToken.update({
         where: { id: resetToken.id },

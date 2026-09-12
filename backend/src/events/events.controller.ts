@@ -37,6 +37,19 @@ export class EventsController {
     return this.eventsService.findAll(user);
   }
 
+  @Get("recurrence-group/:groupId")
+  @ApiOperation({ summary: "Listar eventos de uma série de recorrência" })
+  @ApiOkResponse({
+    description: "Eventos da série listados com sucesso.",
+  })
+  @ResponseMessage("Eventos da série listados com sucesso.")
+  findByRecurrenceGroup(
+    @Param("groupId") groupId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.eventsService.findByRecurrenceGroup(groupId, user);
+  }
+
   @Get(":id")
   @ApiOperation({ summary: "Buscar evento por ID" })
   @ApiOkResponse({ description: "Evento encontrado com sucesso." })
@@ -89,5 +102,29 @@ export class EventsController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.eventsService.remove(id, user);
+  }
+
+  @Post(":id/sync-google")
+  @Roles(Perfil.ADMIN)
+  @ApiOperation({ summary: "Sincronizar evento com Google Calendar" })
+  @ApiOkResponse({ description: "Evento sincronizado com sucesso." })
+  @ResponseMessage("Evento sincronizado com Google Calendar.")
+  syncGoogle(
+    @Param("id", new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.eventsService.syncEventToGoogle(user.sub, id, user);
+  }
+
+  @Delete(":id/sync-google")
+  @Roles(Perfil.ADMIN)
+  @ApiOperation({ summary: "Desvincular evento do Google Calendar" })
+  @ApiOkResponse({ description: "Evento desvinculado do Google Calendar." })
+  @ResponseMessage("Evento desvinculado do Google Calendar.")
+  unlinkGoogle(
+    @Param("id", new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.eventsService.unlinkEventFromGoogle(user.sub, id, user);
   }
 }

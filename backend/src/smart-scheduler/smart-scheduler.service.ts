@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -12,7 +13,6 @@ import {
   type User,
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
-import { SmartSchedulerAiEnhancerService } from "./smart-scheduler.ai-enhancer.service";
 
 type AbsenceRisk = "BAIXO" | "MEDIO" | "ALTO";
 type EngagementStatus = "ALTO" | "MODERADO" | "BAIXO" | "CRITICO";
@@ -109,10 +109,7 @@ type VolunteerAccumulator = {
 
 @Injectable()
 export class SmartSchedulerService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly aiEnhancerService: SmartSchedulerAiEnhancerService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   private getRangeStart(days: number) {
     const date = new Date();
@@ -376,9 +373,12 @@ export class SmartSchedulerService {
     return badges;
   }
 
-  private async getEventOrThrow(eventId: string) {
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
+  private async getEventOrThrow(eventId: string, churchId?: string) {
+    const event = await this.prisma.event.findFirst({
+      where: {
+        id: eventId,
+        ...(churchId ? { churchId } : {}),
+      },
     });
 
     if (!event) {
@@ -388,10 +388,16 @@ export class SmartSchedulerService {
     return event;
   }
 
-  private async getTargetMinistries(event: Event, ministryIds?: string[]) {
+  private async getTargetMinistries(
+    event: Event,
+    ministryIds?: string[],
+    churchId?: string,
+  ) {
+    const churchFilter = churchId ? { churchId } : {};
+
     if (ministryIds?.length) {
       const ministries = await this.prisma.ministry.findMany({
-        where: { id: { in: ministryIds } },
+        where: { id: { in: ministryIds }, ...churchFilter },
         orderBy: { nome: "asc" },
       });
 
@@ -406,6 +412,7 @@ export class SmartSchedulerService {
 
     const linkedMinistries = await this.prisma.ministry.findMany({
       where: {
+        ...churchFilter,
         schedules: {
           some: {
             event: {
@@ -428,15 +435,20 @@ export class SmartSchedulerService {
       return linkedMinistries;
     }
 
-    return this.prisma.ministry.findMany({ orderBy: { nome: "asc" } });
+    return this.prisma.ministry.findMany({
+      where: { ...churchFilter },
+      orderBy: { nome: "asc" },
+    });
   }
 
   private async buildVolunteerInsightsForMinistry(params: {
     ministry: Ministry;
     event: Event;
     limit?: number;
+    churchId?: string;
   }): Promise<VolunteerInsight[]> {
     const recentWindow = this.getRangeStart(120);
+    const churchFilter = params.churchId ? { churchId: params.churchId } : {};
 
     const members = await this.prisma.user.findMany({
       where: {
@@ -445,6 +457,7 @@ export class SmartSchedulerService {
         ministries: {
           some: { id: params.ministry.id },
         },
+        ...churchFilter,
       },
       select: {
         id: true,
@@ -464,6 +477,7 @@ export class SmartSchedulerService {
       this.prisma.schedule.findMany({
         where: {
           volunteerId: { in: memberIds },
+          ...churchFilter,
         },
         select: {
           volunteerId: true,
@@ -483,6 +497,11 @@ export class SmartSchedulerService {
             { requestedVolunteerId: { in: memberIds } },
           ],
           createdAt: { gte: recentWindow },
+          ...(params.churchId
+            ? {
+                requesterShift: { churchId: params.churchId },
+              }
+            : {}),
         },
         select: {
           requesterId: true,
@@ -579,16 +598,18 @@ export class SmartSchedulerService {
     return ranked;
   }
 
-  private async buildRankingDataset() {
+  private async buildRankingDataset(churchId?: string) {
     const recentWindow = this.getRangeStart(120);
     const recentActivityWindow = this.getRangeStart(90);
     const monthStart = this.getMonthStart();
     const monthEnd = this.getMonthEnd();
+    const churchFilter = churchId ? { churchId } : {};
 
     const volunteers = await this.prisma.user.findMany({
       where: {
         ativo: true,
         perfil: Perfil.VOLUNTARIO,
+        ...churchFilter,
       },
       select: {
         id: true,
@@ -613,6 +634,7 @@ export class SmartSchedulerService {
       this.prisma.schedule.findMany({
         where: {
           volunteerId: { in: volunteerIds },
+          ...churchFilter,
         },
         select: {
           volunteerId: true,
@@ -636,6 +658,11 @@ export class SmartSchedulerService {
             { requestedVolunteerId: { in: volunteerIds } },
           ],
           createdAt: { gte: recentWindow },
+          ...(churchId
+            ? {
+                requesterShift: { churchId },
+              }
+            : {}),
         },
         select: {
           requesterId: true,
@@ -833,8 +860,12 @@ export class SmartSchedulerService {
     return computed;
   }
 
-  async getRanking(params?: { limit?: number; viewerId?: string }) {
-    const ranking = await this.buildRankingDataset();
+  async getRanking(params?: {
+    limit?: number;
+    viewerId?: string;
+    churchId?: string;
+  }) {
+    const ranking = await this.buildRankingDataset(params?.churchId);
     const limit = params?.limit ? Math.max(1, Math.min(50, params.limit)) : 30;
 
     const items = ranking.slice(0, limit).map((item) => item.ranking);
@@ -850,9 +881,10 @@ export class SmartSchedulerService {
     };
   }
 
-  async getAdminExecutiveDashboard() {
-    const rankingComputed = await this.buildRankingDataset();
+  async getAdminExecutiveDashboard(churchId?: string) {
+    const rankingComputed = await this.buildRankingDataset(churchId);
     const ranking = rankingComputed.map((item) => item.ranking);
+    const churchFilter = churchId ? { churchId } : {};
 
     const monthStart = this.getMonthStart();
     const monthEnd = this.getMonthEnd();
@@ -860,6 +892,7 @@ export class SmartSchedulerService {
     const [monthSchedules, pendingSwaps, upcomingEvent] = await Promise.all([
       this.prisma.schedule.findMany({
         where: {
+          ...churchFilter,
           event: {
             dataInicio: {
               gte: monthStart,
@@ -873,11 +906,19 @@ export class SmartSchedulerService {
         },
       }),
       this.prisma.swapRequest.count({
-        where: { status: SwapRequestStatus.PENDENTE },
+        where: {
+          status: SwapRequestStatus.PENDENTE,
+          ...(churchId
+            ? {
+                requesterShift: { churchId },
+              }
+            : {}),
+        },
       }),
       this.prisma.event.findFirst({
         where: {
           dataInicio: { gte: new Date() },
+          ...churchFilter,
         },
         orderBy: { dataInicio: "asc" },
         select: { id: true, nome: true },
@@ -970,7 +1011,7 @@ export class SmartSchedulerService {
     }));
 
     const insightsAi = upcomingEvent
-      ? await this.getInsights(upcomingEvent.id)
+      ? await this.getInsights(upcomingEvent.id, churchId)
       : null;
 
     return {
@@ -1009,8 +1050,8 @@ export class SmartSchedulerService {
     };
   }
 
-  async getVolunteerDashboard(volunteerId: string) {
-    const rankingComputed = await this.buildRankingDataset();
+  async getVolunteerDashboard(volunteerId: string, churchId?: string) {
+    const rankingComputed = await this.buildRankingDataset(churchId);
     const current = rankingComputed.find(
       (item) => item.ranking.volunteerId === volunteerId,
     );
@@ -1027,6 +1068,7 @@ export class SmartSchedulerService {
           event: {
             dataInicio: { gte: new Date() },
           },
+          ...(churchId ? { churchId } : {}),
         },
         orderBy: { event: { dataInicio: "asc" } },
         select: {
@@ -1049,7 +1091,10 @@ export class SmartSchedulerService {
         },
       }),
       this.prisma.schedule.findMany({
-        where: { volunteerId },
+        where: {
+          volunteerId,
+          ...(churchId ? { churchId } : {}),
+        },
         orderBy: [{ event: { dataInicio: "desc" } }],
         take: 8,
         select: {
@@ -1162,10 +1207,16 @@ export class SmartSchedulerService {
     eventId: string;
     ministryId: string;
     limit?: number;
+    churchId?: string;
   }) {
     const [event, ministry] = await Promise.all([
-      this.getEventOrThrow(params.eventId),
-      this.prisma.ministry.findUnique({ where: { id: params.ministryId } }),
+      this.getEventOrThrow(params.eventId, params.churchId),
+      this.prisma.ministry.findFirst({
+        where: {
+          id: params.ministryId,
+          ...(params.churchId ? { churchId: params.churchId } : {}),
+        },
+      }),
     ]);
 
     if (!ministry) {
@@ -1176,6 +1227,7 @@ export class SmartSchedulerService {
       event,
       ministry,
       limit: params.limit ?? 5,
+      churchId: params.churchId,
     });
 
     return {
@@ -1198,13 +1250,25 @@ export class SmartSchedulerService {
     eventId: string;
     ministryIds?: string[];
     slotsPerMinistry?: number;
+    churchId?: string;
   }) {
     const slotsPerMinistry = params.slotsPerMinistry ?? 1;
-    const event = await this.getEventOrThrow(params.eventId);
+    const event = await this.getEventOrThrow(params.eventId, params.churchId);
     const ministries = await this.getTargetMinistries(
       event,
       params.ministryIds,
+      params.churchId,
     );
+
+    if (params.churchId) {
+      for (const ministry of ministries) {
+        if (ministry.churchId !== params.churchId) {
+          throw new ForbiddenException(
+            `Acesso negado: ministerio ${ministry.nome} nao pertence a esta igreja.`,
+          );
+        }
+      }
+    }
 
     const recommendations: MinistrySuggestion[] = [];
     const createdSchedules: Array<{
@@ -1223,6 +1287,7 @@ export class SmartSchedulerService {
         event,
         ministry,
         limit: Math.max(6, slotsPerMinistry * 2),
+        churchId: params.churchId,
       });
 
       recommendations.push({
@@ -1242,6 +1307,7 @@ export class SmartSchedulerService {
           eventId: event.id,
           ministryId: ministry.id,
           status: { in: [ScheduleStatus.CONFIRMADO, ScheduleStatus.PENDENTE] },
+          ...(params.churchId ? { churchId: params.churchId } : {}),
         },
         select: { volunteerId: true },
       });
@@ -1264,6 +1330,7 @@ export class SmartSchedulerService {
             ministryId: ministry.id,
             volunteerId: candidate.volunteerId,
             status: ScheduleStatus.PENDENTE,
+            ...(params.churchId ? { churchId: params.churchId } : {}),
           },
           select: {
             id: true,
@@ -1307,9 +1374,9 @@ export class SmartSchedulerService {
     };
   }
 
-  async getInsights(eventId: string) {
-    const event = await this.getEventOrThrow(eventId);
-    const ministries = await this.getTargetMinistries(event);
+  async getInsights(eventId: string, churchId?: string) {
+    const event = await this.getEventOrThrow(eventId, churchId);
+    const ministries = await this.getTargetMinistries(event, undefined, churchId);
 
     const ministrySuggestions: MinistrySuggestion[] = [];
     const globalRanking: VolunteerInsight[] = [];
@@ -1320,6 +1387,7 @@ export class SmartSchedulerService {
         event,
         ministry,
         limit: 7,
+        churchId,
       });
 
       ministrySuggestions.push({
@@ -1363,15 +1431,6 @@ export class SmartSchedulerService {
         : "Sem voluntarios subutilizados no recorte analisado.",
     ];
 
-    const aiInsights =
-      await this.aiEnhancerService.generateAdministrativeInsights({
-        eventName: event.nome,
-        ministryNames: ministries.map((ministry) => ministry.nome),
-        highRiskCount: highRisk.length,
-        overloadedCount: overloaded.length,
-        underutilizedCount: underutilized.length,
-      });
-
     return {
       event: {
         id: event.id,
@@ -1400,7 +1459,7 @@ export class SmartSchedulerService {
       },
       insights: {
         local: localInsights,
-        ai: aiInsights,
+        ai: null,
       },
       generatedAt: new Date(),
     };
@@ -1476,7 +1535,14 @@ export class SmartSchedulerService {
         },
       }),
       this.prisma.swapRequest.findMany({
-        where: { createdAt: { gte: ninetyDaysAgo } },
+        where: {
+          createdAt: { gte: ninetyDaysAgo },
+          ...(churchId
+            ? {
+                requesterShift: { churchId },
+              }
+            : {}),
+        },
         select: {
           id: true,
           requesterId: true,

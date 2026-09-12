@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { ArticleCategory, FeedbackStatus, FeedbackType } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "../auth/strategies/jwt.strategy";
@@ -81,13 +81,18 @@ export class HelpCenterService {
     });
   }
 
-  async listFeedbacks(status?: FeedbackStatus, tipo?: string) {
+  async listFeedbacks(
+    status?: FeedbackStatus,
+    tipo?: string,
+    churchId?: string,
+  ) {
     const parsedTipo = tipo as FeedbackType | undefined;
 
     return this.prisma.userFeedback.findMany({
       where: {
         ...(status ? { status } : {}),
         ...(parsedTipo ? { tipo: parsedTipo } : {}),
+        ...(churchId ? { churchId } : {}),
       },
       orderBy: { createdAt: "desc" },
       include: {
@@ -97,7 +102,20 @@ export class HelpCenterService {
     });
   }
 
-  async updateFeedbackStatus(id: string, status: FeedbackStatus) {
+  async updateFeedbackStatus(id: string, status: FeedbackStatus, churchId?: string) {
+    const feedback = await this.prisma.userFeedback.findUnique({
+      where: { id },
+      select: { id: true, churchId: true },
+    });
+
+    if (!feedback) {
+      throw new NotFoundException("Feedback não encontrado.");
+    }
+
+    if (churchId && feedback.churchId !== churchId) {
+      throw new ForbiddenException("Acesso negado: feedback de outra igreja.");
+    }
+
     return this.prisma.userFeedback.update({ where: { id }, data: { status } });
   }
 }

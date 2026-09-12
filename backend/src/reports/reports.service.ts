@@ -284,13 +284,19 @@ export class ReportsService {
     return this.toCsv(report);
   }
 
-  async logExport(actorId: string, format: string, filters: ReportsQueryDto) {
+  async logExport(
+    actorId: string,
+    format: string,
+    filters: ReportsQueryDto,
+    churchId?: string,
+  ) {
     await this.auditLogsService.log({
       userId: actorId,
       action: "REPORT_EXPORTED",
       module: "REPORTS",
       targetId: format,
       newValue: toJsonValue(filters),
+      churchId,
     });
   }
 

@@ -7,8 +7,8 @@ import {
   IsOptional,
   IsString,
   IsUUID,
-  MinLength,
 } from "class-validator";
+import { IsStrongPassword } from "../../common/validators/is-strong-password.validator";
 
 export class CreateUserDto {
   @ApiProperty({ example: "Maria Souza" })
@@ -19,9 +19,9 @@ export class CreateUserDto {
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ example: "voluntario123", minLength: 6 })
+  @ApiProperty({ example: "Maria@123", minLength: 8 })
   @IsString()
-  @MinLength(6)
+  @IsStrongPassword()
   senha!: string;
 
   @ApiProperty({ example: "(31) 98888-1111" })

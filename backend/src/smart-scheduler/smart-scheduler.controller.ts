@@ -43,6 +43,7 @@ export class SmartSchedulerController {
     return this.smartSchedulerService.getRanking({
       limit: normalizedLimit,
       viewerId: user.sub,
+      churchId: user.churchId,
     });
   }
 
@@ -51,8 +52,8 @@ export class SmartSchedulerController {
   @ApiOperation({ summary: "Dashboard executivo para administradores" })
   @ApiOkResponse({ description: "Dashboard admin carregado com sucesso." })
   @ResponseMessage("Dashboard admin carregado com sucesso.")
-  getAdminDashboard() {
-    return this.smartSchedulerService.getAdminExecutiveDashboard();
+  getAdminDashboard(@CurrentUser() user: JwtPayload) {
+    return this.smartSchedulerService.getAdminExecutiveDashboard(user.churchId);
   }
 
   @Get("dashboard/me")
@@ -62,7 +63,10 @@ export class SmartSchedulerController {
   })
   @ResponseMessage("Dashboard pessoal carregado com sucesso.")
   getVolunteerDashboard(@CurrentUser() user: JwtPayload) {
-    return this.smartSchedulerService.getVolunteerDashboard(user.sub);
+    return this.smartSchedulerService.getVolunteerDashboard(
+      user.sub,
+      user.churchId,
+    );
   }
 
   @Get("insights/:eventId")
@@ -70,8 +74,11 @@ export class SmartSchedulerController {
   @ApiOperation({ summary: "Obter insights inteligentes para um evento" })
   @ApiOkResponse({ description: "Insights de IA carregados com sucesso." })
   @ResponseMessage("Insights de IA carregados com sucesso.")
-  getInsights(@Param("eventId", new ParseUUIDPipe()) eventId: string) {
-    return this.smartSchedulerService.getInsights(eventId);
+  getInsights(
+    @Param("eventId", new ParseUUIDPipe()) eventId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.smartSchedulerService.getInsights(eventId, user.churchId);
   }
 
   @Get("suggestions")
@@ -86,6 +93,7 @@ export class SmartSchedulerController {
     @Query("eventId", new ParseUUIDPipe()) eventId: string,
     @Query("ministryId", new ParseUUIDPipe()) ministryId: string,
     @Query("limit") limit?: string,
+    @CurrentUser() user?: JwtPayload,
   ) {
     const parsedLimit = limit ? Number(limit) : undefined;
     const normalizedLimit =
@@ -97,6 +105,7 @@ export class SmartSchedulerController {
       eventId,
       ministryId,
       limit: normalizedLimit,
+      churchId: user?.churchId,
     });
   }
 
@@ -108,11 +117,13 @@ export class SmartSchedulerController {
   generateSmartSchedule(
     @Param("eventId", new ParseUUIDPipe()) eventId: string,
     @Body() dto: GenerateSmartScheduleDto,
+    @CurrentUser() user: JwtPayload,
   ) {
     return this.smartSchedulerService.generateSmartSchedule({
       eventId,
       ministryIds: dto.ministryIds,
       slotsPerMinistry: dto.slotsPerMinistry,
+      churchId: user.churchId,
     });
   }
 

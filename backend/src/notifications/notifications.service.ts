@@ -156,13 +156,17 @@ export class NotificationsService {
 
   async notifySwapAutoCompletedToLeader(params: {
     ministryId: string;
+    churchId?: string;
     requesterName: string;
     requestedVolunteerName: string;
     requesterEventName: string;
     requestedEventName: string;
   }) {
-    const ministry = await this.prisma.ministry.findUnique({
-      where: { id: params.ministryId },
+    const ministry = await this.prisma.ministry.findFirst({
+      where: {
+        id: params.ministryId,
+        ...(params.churchId ? { churchId: params.churchId } : {}),
+      },
       select: { id: true, nome: true, leaderId: true, churchId: true },
     });
 
@@ -202,11 +206,16 @@ export class NotificationsService {
     }
   }
 
-  async runRemindersForUpcomingSchedules(hoursAhead = 24, actor?: JwtPayload) {
+  async runRemindersForUpcomingSchedules(
+    hoursAhead = 24,
+    actor?: JwtPayload,
+    directChurchId?: string,
+  ) {
     const now = new Date();
     const start = new Date(now.getTime() + hoursAhead * 60 * 60 * 1000);
     const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
-    const churchId = actor ? this.getChurchIdOrThrow(actor) : undefined;
+    const churchId =
+      directChurchId ?? (actor ? this.getChurchIdOrThrow(actor) : undefined);
 
     const schedules = await this.prisma.schedule.findMany({
       where: {
@@ -245,6 +254,7 @@ export class NotificationsService {
       const duplicate = await this.prisma.notification.findFirst({
         where: {
           userId: schedule.volunteerId,
+          churchId: schedule.churchId ?? undefined,
           tipo: NotificationType.REMINDER,
           titulo: title,
           mensagem: message,

@@ -56,7 +56,12 @@ export class ReportsController {
       format,
       user,
     );
-    await this.reportsService.logExport(user.sub, format, query);
+    await this.reportsService.logExport(
+      user.sub,
+      format,
+      query,
+      user.churchId,
+    );
 
     response.setHeader("Content-Type", mimeType);
     response.setHeader(

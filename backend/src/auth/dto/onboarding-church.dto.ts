@@ -1,5 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsEmail, IsString, MinLength, Matches } from "class-validator";
+import { IsEmail, IsString, Matches } from "class-validator";
+import { IsStrongPassword } from "../../common/validators/is-strong-password.validator";
 
 export class OnboardingChurchDto {
   @ApiProperty({ example: "Lagoinha Campinas" })
@@ -41,8 +42,8 @@ export class OnboardingChurchDto {
   @IsString()
   adminPhone!: string;
 
-  @ApiProperty({ example: "senhaForte123", minLength: 6 })
+  @ApiProperty({ example: "Admin@123", minLength: 8 })
   @IsString()
-  @MinLength(6)
+  @IsStrongPassword()
   adminPassword!: string;
 }

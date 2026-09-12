@@ -2,7 +2,6 @@ import {
   Activity,
   AlertTriangle,
   ArrowUpRight,
-  BrainCircuit,
   CalendarClock,
   Gauge,
   LoaderCircle,
@@ -331,55 +330,32 @@ export function DashboardPage() {
             <RankingTable title="Ranking geral" rows={adminData.rankingGeral} />
 
             <article className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
-                <BrainCircuit className="h-4 w-4 text-brand-200" />
-                Insights da IA
+              <h3 className="text-sm font-semibold text-white">
+                Evolucao de score (lider)
               </h3>
-
-              <ul className="mt-3 space-y-2 text-sm text-app-100">
-                {adminData.insightsIa.local.map((line) => (
-                  <li
-                    key={line}
-                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-2"
-                  >
-                    {line}
-                  </li>
-                ))}
-              </ul>
-
-              <div className="mt-3 rounded-xl border border-brand-300/25 bg-brand-500/10 px-3 py-2 text-xs text-brand-100">
-                {adminData.insightsIa.ai ||
-                  "Sem API key ativa. Motor local heuristico em uso."}
-              </div>
-
-              <div className="mt-4 rounded-xl border border-white/10 bg-app-900/60 p-3">
-                <p className="text-xs uppercase tracking-[0.14em] text-app-200/80">
-                  Evolucao de score (lider)
-                </p>
-                {topScoreEvolution.length > 0 ? (
-                  <div className="mt-2 flex items-end gap-2">
-                    {topScoreEvolution.map((point) => (
-                      <div key={point.label} className="flex-1 text-center">
-                        <div className="h-20 rounded-md bg-app-900/80 p-1">
-                          <div
-                            className="mt-auto rounded-sm bg-brand-300/85"
-                            style={{
-                              height: `${Math.max(6, Math.min(100, (point.value + 8) * 8))}%`,
-                            }}
-                          />
-                        </div>
-                        <p className="mt-1 text-[10px] text-app-300">
-                          {point.label}
-                        </p>
+              {topScoreEvolution.length > 0 ? (
+                <div className="mt-3 flex items-end gap-2">
+                  {topScoreEvolution.map((point) => (
+                    <div key={point.label} className="flex-1 text-center">
+                      <div className="h-20 rounded-md bg-app-900/80 p-1">
+                        <div
+                          className="mt-auto rounded-sm bg-brand-300/85"
+                          style={{
+                            height: `${Math.max(6, Math.min(100, (point.value + 8) * 8))}%`,
+                          }}
+                        />
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-2 text-xs text-app-300">
-                    Sem dados suficientes.
-                  </p>
-                )}
-              </div>
+                      <p className="mt-1 text-[10px] text-app-300">
+                        {point.label}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-xs text-app-300">
+                  Sem dados suficientes.
+                </p>
+              )}
             </article>
           </div>
 
@@ -509,7 +485,7 @@ export function DashboardPage() {
             <article className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
                 <Activity className="h-4 w-4 text-brand-200" />
-                Sugestoes da IA
+                Sugestoes
               </h3>
 
               <ul className="mt-3 space-y-2 text-sm text-app-100">

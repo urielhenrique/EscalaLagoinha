@@ -121,10 +121,10 @@ const TRACKS: Track[] = [
       },
       {
         id: "l3",
-        title: "Gere escalas automáticas com IA",
-        description: "Use a IA para criar escalas balanceadas automaticamente",
-        detail: `Em "IA Insights" você pode gerar escalas inteligentes baseadas na disponibilidade dos voluntários. A IA distribui equitativamente considerando histórico e preferências.`,
-        href: "/ia-insights",
+        title: "Gere escalas automáticas",
+        description: "Use o Smart Scheduler para criar escalas balanceadas automaticamente",
+        detail: `Em "Gestão de Escalas" você pode gerar escalas inteligentes baseadas na disponibilidade dos voluntários. O sistema distribui equitativamente considerando histórico e preferências.`,
+        href: "/gestao-escalas",
         icon: <BookOpen className="h-5 w-5 text-violet-300" />,
       },
       {

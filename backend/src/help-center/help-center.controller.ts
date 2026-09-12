@@ -79,8 +79,9 @@ export class HelpCenterController {
   listFeedbacks(
     @Query("status") status?: FeedbackStatus,
     @Query("tipo") tipo?: string,
+    @CurrentUser() user?: JwtPayload,
   ) {
-    return this.service.listFeedbacks(status, tipo);
+    return this.service.listFeedbacks(status, tipo, user?.churchId);
   }
 
   @Patch("feedback/:id/status")
@@ -89,7 +90,8 @@ export class HelpCenterController {
   updateFeedbackStatus(
     @Param("id") id: string,
     @Body("status") status: FeedbackStatus,
+    @CurrentUser() user: JwtPayload,
   ) {
-    return this.service.updateFeedbackStatus(id, status);
+    return this.service.updateFeedbackStatus(id, status, user.churchId);
   }
 }
