@@ -8,6 +8,11 @@ import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import { ResponseInterceptor } from "./common/interceptors/response.interceptor";
 import { PrismaService } from "./prisma/prisma.service";
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const cors = require("cors") as (
+  options?: Record<string, unknown>,
+) => (req: unknown, res: unknown, next: () => void) => void;
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: ["log", "warn", "error", "fatal"],
@@ -41,7 +46,7 @@ async function bootstrap() {
     );
   }
 
-  app.enableCors({
+  const corsFn = cors({
     origin: (
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void,
@@ -52,7 +57,9 @@ async function bootstrap() {
       }
 
       if (!origin) {
-        callback(new Error("CORS: origem não informada não é permitida em produção."));
+        callback(
+          new Error("CORS: origem não informada não é permitida em produção."),
+        );
         return;
       }
 
@@ -66,6 +73,22 @@ async function bootstrap() {
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   });
+
+  // Bypass CORS for internal health checks (no Origin header).
+  // Docker / Coolify healthchecks use curl without Origin, which the
+  // production CORS config rejects. All other routes keep the full CORS logic.
+  app.use(
+    (
+      req: { path?: string; headers?: Record<string, string | undefined> },
+      res: unknown,
+      next: () => void,
+    ) => {
+      if (req.path === "/health" && !req.headers?.origin) {
+        return next();
+      }
+      corsFn(req, res, next);
+    },
+  );
 
   // ─── Proxy confiável (Nginx / Railway / Render) ───────────────────────────
   if (isProduction) {
