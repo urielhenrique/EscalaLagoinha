@@ -4,9 +4,15 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { Perfil, Prisma, ScheduleStatus } from "@prisma/client";
+import { Prisma, ScheduleStatus } from "@prisma/client";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
 import { AvailabilityService } from "../availability/availability.service";
+import {
+  assertLeaderOfMinistry,
+  getChurchIdOrThrow,
+  isChurchAdmin,
+  isLeader,
+} from "../auth/helpers/role-helpers";
 import { JwtPayload } from "../auth/strategies/jwt.strategy";
 import { toJsonValue } from "../common/utils/json";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -57,22 +63,14 @@ export class SchedulesService {
     private readonly auditLogsService: AuditLogsService,
   ) {}
 
-  private isChurchManager(user: JwtPayload) {
-    return (
-      user.perfil === Perfil.ADMIN ||
-      user.perfil === Perfil.MASTER_ADMIN ||
-      user.perfil === Perfil.MASTER_PLATFORM_ADMIN
-    );
-  }
-
-  private getChurchIdOrThrow(user: JwtPayload) {
-    if (!user.churchId) {
-      throw new ForbiddenException(
-        "Acesso negado: usuário sem igreja vinculada.",
-      );
+  private async assertLeaderAccess(
+    actor: JwtPayload,
+    ministryId: string,
+    churchId: string,
+  ) {
+    if (isLeader(actor)) {
+      await assertLeaderOfMinistry(this.prisma, actor.sub, ministryId, churchId);
     }
-
-    return user.churchId;
   }
 
   private async ensureEntitiesExist(data: {
@@ -164,7 +162,8 @@ export class SchedulesService {
   }
 
   async create(dto: CreateScheduleDto, actor: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(actor);
+    const churchId = getChurchIdOrThrow(actor);
+    await this.assertLeaderAccess(actor, dto.ministryId, churchId);
     await this.ensureEntitiesExist({ ...dto, churchId });
 
     const targetEvent = await this.prisma.event.findUnique({
@@ -236,13 +235,13 @@ export class SchedulesService {
     filters: { eventId?: string; ministryId?: string; volunteerId?: string },
   ) {
     const where: Prisma.ScheduleWhereInput = {
-      churchId: this.getChurchIdOrThrow(user),
+      churchId: getChurchIdOrThrow(user),
       eventId: filters.eventId,
       ministryId: filters.ministryId,
       volunteerId: filters.volunteerId,
     };
 
-    if (this.isChurchManager(user)) {
+    if (isChurchAdmin(user)) {
       return this.prisma.schedule.findMany({
         where,
         orderBy: [{ event: { dataInicio: "asc" } }, { createdAt: "asc" }],
@@ -269,7 +268,7 @@ export class SchedulesService {
   }
 
   async findByIdVisible(id: string, user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     const schedule = await this.prisma.schedule.findUnique({
       where: { id },
       select: scheduleSelect,
@@ -283,7 +282,7 @@ export class SchedulesService {
       throw new ForbiddenException("Você não possui acesso a esta escala.");
     }
 
-    if (this.isChurchManager(user)) {
+    if (isChurchAdmin(user)) {
       return schedule;
     }
 
@@ -298,7 +297,7 @@ export class SchedulesService {
   }
 
   async update(id: string, dto: UpdateScheduleDto, actor: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(actor);
+    const churchId = getChurchIdOrThrow(actor);
     const existing = await this.prisma.schedule.findUnique({
       where: { id },
       select: scheduleSelect,
@@ -312,8 +311,10 @@ export class SchedulesService {
       throw new ForbiddenException("Acesso negado a escala de outra igreja.");
     }
 
-    const eventId = dto.eventId ?? existing.eventId;
     const ministryId = dto.ministryId ?? existing.ministryId;
+    await this.assertLeaderAccess(actor, ministryId, churchId);
+
+    const eventId = dto.eventId ?? existing.eventId;
     const volunteerId = dto.volunteerId ?? existing.volunteerId;
 
     await this.ensureEntitiesExist({
@@ -386,7 +387,7 @@ export class SchedulesService {
   }
 
   async cancel(id: string, actor: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(actor);
+    const churchId = getChurchIdOrThrow(actor);
     const exists = await this.prisma.schedule.findUnique({
       where: { id },
       select: scheduleSelect,
@@ -399,6 +400,8 @@ export class SchedulesService {
     if (exists.churchId !== churchId) {
       throw new ForbiddenException("Acesso negado a escala de outra igreja.");
     }
+
+    await this.assertLeaderAccess(actor, exists.ministryId, churchId);
 
     const cancelled = await this.prisma.schedule.update({
       where: { id },

@@ -26,6 +26,7 @@ describe("SchedulesService — Multi-Tenancy", () => {
       },
       ministry: {
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
       },
       user: {
         findUnique: jest.fn(),
@@ -45,6 +46,14 @@ describe("SchedulesService — Multi-Tenancy", () => {
     sub: "vol-1",
     email: "vol@test.com",
     perfil: Perfil.VOLUNTARIO,
+    churchId: "church-a",
+    churchSlug: "church-a",
+  };
+
+  const leaderUser: JwtPayload = {
+    sub: "leader-1",
+    email: "leader@test.com",
+    perfil: Perfil.LEADER,
     churchId: "church-a",
     churchSlug: "church-a",
   };
@@ -240,6 +249,76 @@ describe("SchedulesService — Multi-Tenancy", () => {
             churchId: "church-a",
           }),
         }),
+      );
+    });
+  });
+
+  describe("LEADER access", () => {
+    it("should allow LEADER to view schedules in own church", async () => {
+      prismaMock.schedule.findMany.mockResolvedValue([]);
+
+      await service.findAllVisible(leaderUser, {});
+
+      expect(prismaMock.schedule.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            churchId: "church-a",
+          }),
+        }),
+      );
+    });
+
+    it("should restrict LEADER to own church schedules", async () => {
+      prismaMock.schedule.findMany.mockImplementation(
+        async (args: { where: { churchId?: string } }) => {
+          if (args.where.churchId === "church-a") return [];
+          return [{ id: "s-from-b" }];
+        },
+      );
+
+      const result = await service.findAllVisible(leaderUser, {});
+
+      expect(result).toEqual([]);
+    });
+
+    it("should throw ForbiddenException when LEADER tries to create schedule in another church", async () => {
+      const leaderFromChurchB: JwtPayload = {
+        ...leaderUser,
+        churchId: "church-b",
+      };
+
+      prismaMock.event.findUnique.mockResolvedValue({
+        id: "e1",
+        dataInicio: new Date("2026-10-05T19:00:00Z"),
+        dataFim: new Date("2026-10-05T21:00:00Z"),
+        churchId: "church-a",
+      });
+
+      prismaMock.ministry.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.create(
+          { eventId: "e1", ministryId: "m1", volunteerId: "vol-1" },
+          leaderFromChurchB,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("should throw ForbiddenException when LEADER cancels schedule from another church", async () => {
+      prismaMock.schedule.findUnique.mockResolvedValue({
+        id: "s1",
+        churchId: "church-b",
+        eventId: "e1",
+        ministryId: "m1",
+        volunteerId: "vol-1",
+        status: "PENDENTE",
+        event: {},
+        ministry: {},
+        volunteer: {},
+      });
+
+      await expect(service.cancel("s1", leaderUser)).rejects.toThrow(
+        ForbiddenException,
       );
     });
   });

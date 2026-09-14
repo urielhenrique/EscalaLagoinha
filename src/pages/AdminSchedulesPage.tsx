@@ -6,6 +6,7 @@ import {
   Plus,
   ShieldAlert,
   Trash2,
+  UserCheck,
 } from "lucide-react";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Modal } from "../components/ui/Modal";
@@ -21,6 +22,7 @@ import {
   deleteMinistry,
   listVisibleMinistries,
   seedDefaultMinistries,
+  updateMinistry,
 } from "../services/ministriesApi";
 import {
   cancelSchedule,
@@ -80,6 +82,7 @@ export function AdminSchedulesPage() {
     user?.perfil === "ADMIN" ||
     user?.perfil === "MASTER_ADMIN" ||
     user?.perfil === "MASTER_PLATFORM_ADMIN";
+  const canManageMinistries = isAdmin;
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -115,7 +118,7 @@ export function AdminSchedulesPage() {
   });
 
   const loadData = async () => {
-    if (!isAdmin) {
+    if (!isAdmin && user?.perfil !== "LEADER") {
       setIsLoading(false);
       return;
     }
@@ -448,7 +451,32 @@ export function AdminSchedulesPage() {
     }
   };
 
-  if (!isAdmin) {
+  const handleUpdateMinistryLeader = async (
+    ministry: MinistryItem,
+    leaderId: string | null,
+  ) => {
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await updateMinistry(ministry.id, { leaderId });
+      setSuccess(
+        leaderId
+          ? `Líder atribuído ao ministério ${ministry.nome} com sucesso.`
+          : `Líder removido do ministério ${ministry.nome} com sucesso.`,
+      );
+      await loadData();
+    } catch (requestError) {
+      setError(
+        getErrorMessage(
+          requestError,
+          "Não foi possível atualizar o líder do ministério.",
+        ),
+      );
+    }
+  };
+
+  if (!isAdmin && user?.perfil !== "LEADER") {
     return (
       <section className="space-y-5">
         <SectionHeader
@@ -543,7 +571,8 @@ export function AdminSchedulesPage() {
         </div>
       ) : null}
 
-      <article className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      {canManageMinistries ? (
+        <article className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-base font-semibold text-white">
@@ -606,11 +635,31 @@ export function AdminSchedulesPage() {
                 className="rounded-xl border border-white/10 bg-app-850/70 p-3"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="font-medium text-white">{ministry.nome}</p>
                     <p className="mt-1 text-sm text-app-200">
                       {ministry.descricao}
                     </p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <UserCheck className="h-3.5 w-3.5 shrink-0 text-app-300" />
+                      <select
+                        value={ministry.leaderId ?? ""}
+                        onChange={(event) =>
+                          void handleUpdateMinistryLeader(
+                            ministry,
+                            event.target.value || null,
+                          )
+                        }
+                        className="min-w-0 flex-1 rounded-lg border border-white/10 bg-app-800 px-2 py-1 text-xs text-app-100 outline-none"
+                      >
+                        <option value="">Sem líder</option>
+                        {volunteers.map((volunteer) => (
+                          <option key={volunteer.id} value={volunteer.id}>
+                            {volunteer.nome}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -630,6 +679,7 @@ export function AdminSchedulesPage() {
           </p>
         )}
       </article>
+      ) : null}
 
       {error ? (
         <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">

@@ -2,6 +2,7 @@ export type UserProfile =
   | "MASTER_PLATFORM_ADMIN"
   | "MASTER_ADMIN"
   | "ADMIN"
+  | "LEADER"
   | "VOLUNTARIO";
 export type UserStatus = "PENDENTE" | "ATIVO" | "INATIVO";
 

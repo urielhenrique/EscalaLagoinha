@@ -6,6 +6,11 @@ import {
 } from "@nestjs/common";
 import { AttendanceStatus, Perfil, Prisma } from "@prisma/client";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
+import {
+  assertLeaderOfMinistry,
+  getChurchIdOrThrow,
+  isLeader,
+} from "../auth/helpers/role-helpers";
 import { JwtPayload } from "../auth/strategies/jwt.strategy";
 import { toJsonValue } from "../common/utils/json";
 import { PrismaService } from "../prisma/prisma.service";
@@ -60,18 +65,8 @@ export class AttendanceService {
     private readonly auditLogsService: AuditLogsService,
   ) {}
 
-  private getChurchIdOrThrow(user: JwtPayload) {
-    if (!user.churchId) {
-      throw new ForbiddenException(
-        "Acesso negado: usuário sem igreja vinculada.",
-      );
-    }
-
-    return user.churchId;
-  }
-
   private async assertEventChurchAccess(eventId: string, user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
       select: { id: true, churchId: true },
@@ -83,7 +78,7 @@ export class AttendanceService {
   }
 
   async getMyAttendance(user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     const schedules = await this.prisma.schedule.findMany({
       where: {
         volunteerId: user.sub,
@@ -112,7 +107,7 @@ export class AttendanceService {
   }
 
   async getAttendanceByEvent(eventId: string, user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     await this.assertEventChurchAccess(eventId, user);
 
     const schedules = await this.prisma.schedule.findMany({
@@ -142,7 +137,7 @@ export class AttendanceService {
   }
 
   async confirmParticipation(scheduleId: string, user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     const schedule = await this.getVolunteerSchedule(scheduleId, user.sub);
 
     const previous = await this.prisma.attendanceRecord.findUnique({
@@ -185,7 +180,7 @@ export class AttendanceService {
   }
 
   async checkIn(scheduleId: string, user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     await this.getVolunteerSchedule(scheduleId, user.sub);
 
     const previous = await this.prisma.attendanceRecord.findUnique({
@@ -233,14 +228,19 @@ export class AttendanceService {
     body: MarkAttendanceStatusDto,
     actor: JwtPayload,
   ) {
-    const churchId = this.getChurchIdOrThrow(actor);
+    const churchId = getChurchIdOrThrow(actor);
     if (actor.perfil === Perfil.VOLUNTARIO) {
       throw new BadRequestException("Apenas liderança pode ajustar presença.");
     }
 
     const schedule = await this.prisma.schedule.findUnique({
       where: { id: scheduleId },
-      include: SCHEDULE_INCLUDE,
+      select: {
+        id: true,
+        churchId: true,
+        ministryId: true,
+        volunteerId: true,
+      },
     });
 
     if (!schedule) {
@@ -249,6 +249,15 @@ export class AttendanceService {
 
     if (schedule.churchId !== churchId) {
       throw new ForbiddenException("Acesso negado a escala de outra igreja.");
+    }
+
+    if (isLeader(actor)) {
+      await assertLeaderOfMinistry(
+        this.prisma,
+        actor.sub,
+        schedule.ministryId,
+        churchId,
+      );
     }
 
     const previous = await this.prisma.attendanceRecord.findUnique({

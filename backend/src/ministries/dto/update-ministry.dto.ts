@@ -6,6 +6,7 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  ValidateIf,
 } from "class-validator";
 
 export class UpdateMinistryDto {
@@ -23,10 +24,14 @@ export class UpdateMinistryDto {
   @IsOptional()
   descricao?: string;
 
-  @ApiPropertyOptional({ example: "a7b5b9b7-2f4d-4e38-9828-12ab34cd56ef" })
+  @ApiPropertyOptional({
+    example: "a7b5b9b7-2f4d-4e38-9828-12ab34cd56ef",
+    nullable: true,
+  })
+  @ValidateIf((o) => o.leaderId !== null)
   @IsUUID()
   @IsOptional()
-  leaderId?: string;
+  leaderId?: string | null;
 
   @ApiPropertyOptional({
     example: ["a7b5b9b7-2f4d-4e38-9828-12ab34cd56ef"],

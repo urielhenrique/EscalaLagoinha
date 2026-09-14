@@ -1,8 +1,13 @@
-import { ForbiddenException, Injectable } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { AttendanceStatus, Prisma } from "@prisma/client";
 import * as ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
+import {
+  getChurchIdOrThrow,
+  getLeaderMinistryIds,
+  isLeader,
+} from "../auth/helpers/role-helpers";
 import { JwtPayload } from "../auth/strategies/jwt.strategy";
 import { toJsonValue } from "../common/utils/json";
 import { PrismaService } from "../prisma/prisma.service";
@@ -119,19 +124,22 @@ export class ReportsService {
     private readonly auditLogsService: AuditLogsService,
   ) {}
 
-  private getChurchIdOrThrow(actor: JwtPayload) {
-    if (!actor.churchId) {
-      throw new ForbiddenException(
-        "Acesso negado: usuário sem igreja vinculada.",
-      );
+  private async buildLeaderScope(actor: JwtPayload, churchId: string) {
+    if (!isLeader(actor)) {
+      return {};
     }
-
-    return actor.churchId;
+    const ministryIds = await getLeaderMinistryIds(
+      this.prisma,
+      actor.sub,
+      churchId,
+    );
+    return { ministryId: { in: ministryIds } };
   }
 
   async getOverview(query: ReportsQueryDto, actor: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(actor);
-    const where = this.buildScheduleWhere(query, churchId);
+    const churchId = getChurchIdOrThrow(actor);
+    const leaderScope = await this.buildLeaderScope(actor, churchId);
+    const where = this.buildScheduleWhere(query, churchId, leaderScope);
 
     const [schedules, volunteers] = await Promise.all([
       this.prisma.schedule.findMany({
@@ -303,11 +311,13 @@ export class ReportsService {
   private buildScheduleWhere(
     query: ReportsQueryDto,
     churchId: string,
+    leaderScope?: Prisma.ScheduleWhereInput,
   ): Prisma.ScheduleWhereInput {
     return {
       churchId,
       ministryId: query.ministryId,
       volunteerId: query.volunteerId,
+      ...leaderScope,
       event: {
         dataInicio:
           query.from || query.to

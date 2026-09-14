@@ -27,7 +27,7 @@ export class AttendanceController {
   }
 
   @Get("event/:eventId")
-  @Roles(Perfil.ADMIN)
+  @Roles(Perfil.ADMIN, Perfil.LEADER)
   getAttendanceByEvent(
     @Param("eventId") eventId: string,
     @CurrentUser() user: JwtPayload,
@@ -52,7 +52,7 @@ export class AttendanceController {
   }
 
   @Patch(":scheduleId/status")
-  @Roles(Perfil.ADMIN)
+  @Roles(Perfil.ADMIN, Perfil.LEADER)
   markStatus(
     @Param("scheduleId") scheduleId: string,
     @Body() body: MarkAttendanceStatusDto,

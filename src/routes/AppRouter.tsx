@@ -227,15 +227,9 @@ export function AppRouter() {
           path="/minhas-escalas"
           element={withShell(<MySchedulesPage />)}
         />
-        <Route
-          path="/minha-disponibilidade"
-          element={withShell(<MyAvailabilityPage />)}
-        />
+
         <Route path="/meu-perfil" element={withShell(<MyProfilePage />)} />
-        <Route
-          path="/gestao-escalas"
-          element={withShell(<AdminSchedulesPage />)}
-        />
+
         <Route path="/eventos" element={withShell(<EventsPage />)} />
         <Route
           path="/trocas/solicitar"
@@ -258,7 +252,7 @@ export function AppRouter() {
           element={withShell(<NotificationsPage />)}
         />
         <Route path="/ranking" element={withShell(<RankingPage />)} />
-        <Route path="/check-in" element={withShell(<CheckInPage />)} />
+
         <Route path="/ajuda" element={withShell(<HelpCenterPage />)} />
         <Route path="/ajuda/feedback" element={withShell(<FeedbackPage />)} />
         <Route path="/treinamento" element={withShell(<TrainingModePage />)} />
@@ -271,7 +265,7 @@ export function AppRouter() {
       <Route
         element={
           <PrivateRoute
-            allowedProfiles={["ADMIN", "MASTER_ADMIN", "MASTER_PLATFORM_ADMIN"]}
+            allowedProfiles={["ADMIN", "MASTER_ADMIN", "MASTER_PLATFORM_ADMIN", "LEADER"]}
           />
         }
       >
@@ -283,9 +277,25 @@ export function AppRouter() {
         <Route path="/auditoria" element={withShell(<AuditLogsPage />)} />
         <Route path="/relatorios" element={withShell(<ReportsPage />)} />
         <Route
+          path="/gestao-escalas"
+          element={withShell(<AdminSchedulesPage />)}
+        />
+        <Route
           path="/igreja/configuracoes"
           element={withShell(<ChurchSettingsPage />)}
         />
+      </Route>
+
+      <Route
+        element={
+          <PrivateRoute allowedProfiles={["VOLUNTARIO"]} />
+        }
+      >
+        <Route
+          path="/minha-disponibilidade"
+          element={withShell(<MyAvailabilityPage />)}
+        />
+        <Route path="/check-in" element={withShell(<CheckInPage />)} />
       </Route>
 
       <Route

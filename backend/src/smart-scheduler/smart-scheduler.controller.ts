@@ -48,7 +48,7 @@ export class SmartSchedulerController {
   }
 
   @Get("dashboard/admin")
-  @Roles(Perfil.ADMIN)
+  @Roles(Perfil.ADMIN, Perfil.LEADER)
   @ApiOperation({ summary: "Dashboard executivo para administradores" })
   @ApiOkResponse({ description: "Dashboard admin carregado com sucesso." })
   @ResponseMessage("Dashboard admin carregado com sucesso.")
@@ -70,7 +70,7 @@ export class SmartSchedulerController {
   }
 
   @Get("insights/:eventId")
-  @Roles(Perfil.ADMIN)
+  @Roles(Perfil.ADMIN, Perfil.LEADER)
   @ApiOperation({ summary: "Obter insights inteligentes para um evento" })
   @ApiOkResponse({ description: "Insights de IA carregados com sucesso." })
   @ResponseMessage("Insights de IA carregados com sucesso.")
@@ -82,7 +82,7 @@ export class SmartSchedulerController {
   }
 
   @Get("suggestions")
-  @Roles(Perfil.ADMIN)
+  @Roles(Perfil.ADMIN, Perfil.LEADER)
   @ApiOperation({ summary: "Sugerir melhores voluntários para escala manual" })
   @ApiQuery({ name: "eventId", required: true })
   @ApiQuery({ name: "ministryId", required: true })
@@ -110,7 +110,7 @@ export class SmartSchedulerController {
   }
 
   @Post("generate/:eventId")
-  @Roles(Perfil.ADMIN)
+  @Roles(Perfil.ADMIN, Perfil.LEADER)
   @ApiOperation({ summary: "Gerar escala inteligente automática" })
   @ApiOkResponse({ description: "Escala inteligente gerada com sucesso." })
   @ResponseMessage("Escala inteligente gerada com sucesso.")
@@ -128,7 +128,7 @@ export class SmartSchedulerController {
   }
 
   @Get("strategic")
-  @Roles(Perfil.ADMIN, Perfil.MASTER_ADMIN, Perfil.MASTER_PLATFORM_ADMIN)
+  @Roles(Perfil.ADMIN, Perfil.LEADER, Perfil.MASTER_ADMIN, Perfil.MASTER_PLATFORM_ADMIN)
   @ApiOperation({
     summary: "Dashboard estratégico — saúde, crescimento e alertas preditivos",
   })

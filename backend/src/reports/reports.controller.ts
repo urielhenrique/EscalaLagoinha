@@ -19,7 +19,7 @@ import { ReportsService } from "./reports.service";
 
 @Controller("reports")
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Perfil.ADMIN)
+@Roles(Perfil.ADMIN, Perfil.LEADER)
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 

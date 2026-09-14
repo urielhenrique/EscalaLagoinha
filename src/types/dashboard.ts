@@ -30,7 +30,7 @@ export type MenuItem = {
     | "branding"
     | "multi-unidade";
   allowedProfiles?: Array<
-    "MASTER_PLATFORM_ADMIN" | "MASTER_ADMIN" | "ADMIN" | "VOLUNTARIO"
+    "MASTER_PLATFORM_ADMIN" | "MASTER_ADMIN" | "ADMIN" | "LEADER" | "VOLUNTARIO"
   >;
 };
 

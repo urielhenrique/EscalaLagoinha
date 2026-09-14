@@ -84,7 +84,7 @@ export class NotificationsController {
   }
 
   @Post("run-reminders")
-  @Roles(Perfil.ADMIN)
+  @Roles(Perfil.ADMIN, Perfil.LEADER)
   @ApiOperation({ summary: "Executar rotina de lembretes de escala" })
   @ApiQuery({ name: "hoursAhead", required: false, example: "24" })
   @ApiOkResponse({ description: "Rotina executada com sucesso." })

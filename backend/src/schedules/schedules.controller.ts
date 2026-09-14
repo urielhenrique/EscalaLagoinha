@@ -31,7 +31,7 @@ export class SchedulesController {
   constructor(private readonly schedulesService: SchedulesService) {}
 
   @Post()
-  @Roles(Perfil.ADMIN)
+  @Roles(Perfil.ADMIN, Perfil.LEADER)
   @ApiOperation({ summary: "Criar escala" })
   @ApiOkResponse({ description: "Escala criada com sucesso." })
   @ResponseMessage("Escala criada com sucesso.")
@@ -71,7 +71,7 @@ export class SchedulesController {
   }
 
   @Patch(":id")
-  @Roles(Perfil.ADMIN)
+  @Roles(Perfil.ADMIN, Perfil.LEADER)
   @ApiOperation({ summary: "Atualizar escala" })
   @ApiOkResponse({ description: "Escala atualizada com sucesso." })
   @ResponseMessage("Escala atualizada com sucesso.")
@@ -84,7 +84,7 @@ export class SchedulesController {
   }
 
   @Patch(":id/cancel")
-  @Roles(Perfil.ADMIN)
+  @Roles(Perfil.ADMIN, Perfil.LEADER)
   @ApiOperation({ summary: "Cancelar escala" })
   @ApiOkResponse({ description: "Escala cancelada com sucesso." })
   @ResponseMessage("Escala cancelada com sucesso.")

@@ -8,6 +8,11 @@ import {
 import { Prisma, ScheduleStatus, SwapRequestStatus } from "@prisma/client";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
 import { AvailabilityService } from "../availability/availability.service";
+import {
+  assertLeaderOfMinistry,
+  getChurchIdOrThrow,
+  isLeader,
+} from "../auth/helpers/role-helpers";
 import { JwtPayload } from "../auth/strategies/jwt.strategy";
 import { toJsonValue } from "../common/utils/json";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -68,16 +73,6 @@ export class SwapRequestsService {
     private readonly availabilityService: AvailabilityService,
     private readonly auditLogsService: AuditLogsService,
   ) {}
-
-  private getChurchIdOrThrow(user: JwtPayload) {
-    if (!user.churchId) {
-      throw new ForbiddenException(
-        "Acesso negado: usuário sem igreja vinculada.",
-      );
-    }
-
-    return user.churchId;
-  }
 
   private async findScheduleOrThrow(id: string, churchId: string) {
     const schedule = await this.prisma.schedule.findUnique({
@@ -145,7 +140,7 @@ export class SwapRequestsService {
   }
 
   async listEligibleCandidates(requesterShiftId: string, user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     const requesterShift = await this.findScheduleOrThrow(
       requesterShiftId,
       churchId,
@@ -209,7 +204,7 @@ export class SwapRequestsService {
   }
 
   async create(dto: CreateSwapRequestDto, user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     if (dto.requesterShiftId === dto.requestedShiftId) {
       throw new BadRequestException(
         "A troca precisa envolver escalas diferentes.",
@@ -321,7 +316,7 @@ export class SwapRequestsService {
   }
 
   async findMyRequests(user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     return this.prisma.swapRequest.findMany({
       where: {
         requesterId: user.sub,
@@ -333,7 +328,7 @@ export class SwapRequestsService {
   }
 
   async findReceivedRequests(user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     return this.prisma.swapRequest.findMany({
       where: {
         requestedVolunteerId: user.sub,
@@ -345,7 +340,7 @@ export class SwapRequestsService {
   }
 
   async findHistory(user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     return this.prisma.swapRequest.findMany({
       where: {
         requesterShift: { is: { churchId } },
@@ -357,7 +352,7 @@ export class SwapRequestsService {
   }
 
   async approve(id: string, user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     const request = await this.findSwapOrThrow(id, churchId);
 
     if (request.status !== SwapRequestStatus.PENDENTE) {
@@ -366,9 +361,11 @@ export class SwapRequestsService {
       );
     }
 
-    if (request.requestedVolunteerId !== user.sub) {
+    const isRequestedVolunteer = request.requestedVolunteerId === user.sub;
+
+    if (!isRequestedVolunteer && !isLeader(user)) {
       throw new ForbiddenException(
-        "Apenas o voluntário solicitado pode aprovar.",
+        "Apenas o voluntário solicitado ou o líder do ministério pode aprovar.",
       );
     }
 
@@ -380,6 +377,15 @@ export class SwapRequestsService {
       request.requestedShiftId,
       churchId,
     );
+
+    if (isLeader(user)) {
+      await assertLeaderOfMinistry(
+        this.prisma,
+        user.sub,
+        requesterShift.ministryId,
+        churchId,
+      );
+    }
 
     if (
       requesterShift.volunteerId !== request.requesterId ||
@@ -477,7 +483,7 @@ export class SwapRequestsService {
   }
 
   async reject(id: string, user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     const request = await this.findSwapOrThrow(id, churchId);
 
     if (request.status !== SwapRequestStatus.PENDENTE) {
@@ -486,9 +492,24 @@ export class SwapRequestsService {
       );
     }
 
-    if (request.requestedVolunteerId !== user.sub) {
+    const isRequestedVolunteer = request.requestedVolunteerId === user.sub;
+
+    if (!isRequestedVolunteer && !isLeader(user)) {
       throw new ForbiddenException(
-        "Apenas o voluntário solicitado pode recusar.",
+        "Apenas o voluntário solicitado ou o líder do ministério pode recusar.",
+      );
+    }
+
+    if (isLeader(user)) {
+      const requesterShift = await this.findScheduleOrThrow(
+        request.requesterShiftId,
+        churchId,
+      );
+      await assertLeaderOfMinistry(
+        this.prisma,
+        user.sub,
+        requesterShift.ministryId,
+        churchId,
       );
     }
 
@@ -517,7 +538,7 @@ export class SwapRequestsService {
   }
 
   async cancel(id: string, user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     const request = await this.findSwapOrThrow(id, churchId);
 
     if (request.status !== SwapRequestStatus.PENDENTE) {

@@ -5,6 +5,10 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Perfil } from "@prisma/client";
+import {
+  getChurchIdOrThrow,
+  isChurchAdmin,
+} from "../auth/helpers/role-helpers";
 import { JwtPayload } from "../auth/strategies/jwt.strategy";
 import { PrismaService } from "../prisma/prisma.service";
 import { USER_PUBLIC_SELECT } from "../users/users.service";
@@ -27,24 +31,6 @@ const ministrySelect = {
 export class MinistriesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private isChurchManager(user: JwtPayload) {
-    return (
-      user.perfil === Perfil.ADMIN ||
-      user.perfil === Perfil.MASTER_ADMIN ||
-      user.perfil === Perfil.MASTER_PLATFORM_ADMIN
-    );
-  }
-
-  private getChurchIdOrThrow(user: JwtPayload) {
-    if (!user.churchId) {
-      throw new ForbiddenException(
-        "Acesso negado: usuário sem igreja vinculada.",
-      );
-    }
-
-    return user.churchId;
-  }
-
   private async ensureUsersExist(ids: string[], churchId: string) {
     if (ids.length === 0) return;
 
@@ -60,8 +46,27 @@ export class MinistriesService {
     }
   }
 
+  private async ensureLeaderEligible(leaderId: string, churchId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: leaderId, ativo: true, churchId },
+      select: { id: true, perfil: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        "Usuário não encontrado, está inativo ou pertence a outra igreja.",
+      );
+    }
+
+    if (user.perfil !== Perfil.LEADER) {
+      throw new BadRequestException(
+        "O usuário selecionado não possui o perfil LEADER. Apenas usuários com perfil LEADER podem ser líderes de ministério.",
+      );
+    }
+  }
+
   async create(dto: CreateMinistryDto, user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     const memberIds = dto.memberIds ?? [];
 
     const duplicate = await this.prisma.ministry.findUnique({
@@ -83,7 +88,7 @@ export class MinistriesService {
     await this.ensureUsersExist(memberIds, churchId);
 
     if (dto.leaderId) {
-      await this.ensureUsersExist([dto.leaderId], churchId);
+      await this.ensureLeaderEligible(dto.leaderId, churchId);
     }
 
     return this.prisma.ministry.create({
@@ -101,9 +106,9 @@ export class MinistriesService {
   }
 
   async findAllVisible(user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
 
-    if (this.isChurchManager(user)) {
+    if (isChurchAdmin(user)) {
       return this.prisma.ministry.findMany({
         where: { churchId },
         orderBy: { nome: "asc" },
@@ -122,7 +127,7 @@ export class MinistriesService {
   }
 
   async findAll(user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
 
     return this.prisma.ministry.findMany({
       where: { churchId },
@@ -132,9 +137,9 @@ export class MinistriesService {
   }
 
   async findByIdForUser(id: string, user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
 
-    if (this.isChurchManager(user)) {
+    if (isChurchAdmin(user)) {
       const ministry = await this.prisma.ministry.findFirst({
         where: { id, churchId },
         select: ministrySelect,
@@ -164,7 +169,7 @@ export class MinistriesService {
   }
 
   async update(id: string, dto: UpdateMinistryDto, user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
 
     const existing = await this.prisma.ministry.findFirst({
       where: { id, churchId },
@@ -175,8 +180,8 @@ export class MinistriesService {
       throw new NotFoundException("Ministério não encontrado.");
     }
 
-    if (dto.leaderId) {
-      await this.ensureUsersExist([dto.leaderId], churchId);
+    if (dto.leaderId !== undefined && dto.leaderId !== null) {
+      await this.ensureLeaderEligible(dto.leaderId, churchId);
     }
 
     if (dto.memberIds) {
@@ -188,7 +193,7 @@ export class MinistriesService {
       data: {
         nome: dto.nome,
         descricao: dto.descricao,
-        leaderId: dto.leaderId,
+        leaderId: dto.leaderId === null ? null : dto.leaderId,
         members:
           dto.memberIds !== undefined
             ? {
@@ -201,7 +206,7 @@ export class MinistriesService {
   }
 
   async remove(id: string, user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
 
     const existing = await this.prisma.ministry.findFirst({
       where: { id, churchId },
@@ -219,7 +224,7 @@ export class MinistriesService {
   }
 
   async createInitialMinistries(user: JwtPayload) {
-    const churchId = this.getChurchIdOrThrow(user);
+    const churchId = getChurchIdOrThrow(user);
     const names = ["Foto", "Vídeo", "Projeção", "Iluminação", "Transmissão"];
 
     for (const name of names) {

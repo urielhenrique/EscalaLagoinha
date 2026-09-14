@@ -128,7 +128,9 @@ function RankingTable({ title, rows }: { title: string; rows: RankingItem[] }) {
 export function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const isAdmin = user?.perfil === "ADMIN";
+  const isAdmin = ["ADMIN", "MASTER_ADMIN", "MASTER_PLATFORM_ADMIN", "LEADER"].includes(
+    user?.perfil ?? "",
+  );
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

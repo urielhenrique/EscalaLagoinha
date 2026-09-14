@@ -69,6 +69,48 @@ describe("RolesGuard", () => {
       });
       expect(guard.canActivate(context)).toBe(true);
     });
+
+    it("should allow LEADER access when @Roles includes LEADER", () => {
+      jest
+        .spyOn(reflector, "getAllAndOverride")
+        .mockReturnValue([Perfil.ADMIN, Perfil.LEADER]);
+      const context = createMockContext({ perfil: Perfil.LEADER });
+      expect(guard.canActivate(context)).toBe(true);
+    });
+
+    it("should throw ForbiddenException when LEADER lacks required role", () => {
+      jest
+        .spyOn(reflector, "getAllAndOverride")
+        .mockReturnValue([Perfil.MASTER_PLATFORM_ADMIN]);
+      const context = createMockContext({ perfil: Perfil.LEADER });
+      expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+    });
+
+    it("should allow MASTER_ADMIN bypass even for LEADER-only routes", () => {
+      jest
+        .spyOn(reflector, "getAllAndOverride")
+        .mockReturnValue([Perfil.LEADER]);
+      const context = createMockContext({ perfil: Perfil.MASTER_ADMIN });
+      expect(guard.canActivate(context)).toBe(true);
+    });
+
+    it("should allow MASTER_PLATFORM_ADMIN bypass even for LEADER-only routes", () => {
+      jest
+        .spyOn(reflector, "getAllAndOverride")
+        .mockReturnValue([Perfil.LEADER]);
+      const context = createMockContext({
+        perfil: Perfil.MASTER_PLATFORM_ADMIN,
+      });
+      expect(guard.canActivate(context)).toBe(true);
+    });
+
+    it("should throw ForbiddenException when VOLUNTARIO lacks LEADER role", () => {
+      jest
+        .spyOn(reflector, "getAllAndOverride")
+        .mockReturnValue([Perfil.ADMIN, Perfil.LEADER]);
+      const context = createMockContext({ perfil: Perfil.VOLUNTARIO });
+      expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+    });
   });
 });
 

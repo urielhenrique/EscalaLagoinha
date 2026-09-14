@@ -31,14 +31,14 @@ export const menuItems: MenuItem[] = [
     label: "Gestão de Escalas",
     path: "/gestao-escalas",
     icon: "gestao-escalas",
-    allowedProfiles: ["ADMIN", "MASTER_ADMIN"],
+    allowedProfiles: ["ADMIN", "MASTER_ADMIN", "MASTER_PLATFORM_ADMIN", "LEADER"],
   },
   {
     key: "aprovacao-voluntarios",
     label: "Aprovação de Voluntários",
     path: "/aprovacao-voluntarios",
     icon: "aprovacao-voluntarios",
-    allowedProfiles: ["ADMIN", "MASTER_ADMIN"],
+    allowedProfiles: ["ADMIN", "MASTER_ADMIN", "MASTER_PLATFORM_ADMIN"],
   },
   {
     key: "master-admin",
@@ -123,7 +123,7 @@ export const menuItems: MenuItem[] = [
     label: "Gestão de Presença",
     path: "/presenca",
     icon: "presenca",
-    allowedProfiles: ["ADMIN", "MASTER_ADMIN"],
+    allowedProfiles: ["ADMIN", "MASTER_ADMIN", "MASTER_PLATFORM_ADMIN", "LEADER"],
   },
   {
     key: "auditoria",
@@ -137,7 +137,7 @@ export const menuItems: MenuItem[] = [
     label: "Relatórios",
     path: "/relatorios",
     icon: "relatorios",
-    allowedProfiles: ["ADMIN", "MASTER_ADMIN"],
+    allowedProfiles: ["ADMIN", "MASTER_ADMIN", "MASTER_PLATFORM_ADMIN", "LEADER"],
   },
   {
     key: "ranking",
@@ -150,7 +150,7 @@ export const menuItems: MenuItem[] = [
     label: "Painel Estratégico",
     path: "/painel-estrategico",
     icon: "painel-estrategico",
-    allowedProfiles: ["ADMIN", "MASTER_ADMIN", "MASTER_PLATFORM_ADMIN"],
+    allowedProfiles: ["ADMIN", "MASTER_ADMIN", "MASTER_PLATFORM_ADMIN", "LEADER"],
   },
   {
     key: "ajuda",

@@ -86,7 +86,12 @@ export type CreateMinistryPayload = {
   memberIds?: string[];
 };
 
-export type UpdateMinistryPayload = Partial<CreateMinistryPayload>;
+export type UpdateMinistryPayload = {
+  nome?: string;
+  descricao?: string;
+  leaderId?: string | null;
+  memberIds?: string[];
+};
 
 export type UserItem = {
   id: string;
