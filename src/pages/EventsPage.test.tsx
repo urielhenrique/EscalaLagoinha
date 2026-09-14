@@ -159,10 +159,6 @@ describe("EventsPage — Recorrência", () => {
   });
 
   it("should validate recurrence requires at least one day", async () => {
-    mockCreateEvent.mockRejectedValue(
-      new Error("É obrigatório informar pelo menos um dia da semana."),
-    );
-
     render(<EventsPage />);
     openCreateModal();
     fillBasicFields();
@@ -217,7 +213,16 @@ describe("EventsPage — Recorrência", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Preencha todos os campos obrigatórios/),
+        screen.getByText(/O nome do evento é obrigatório/),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(/A descrição do evento é obrigatória/),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(/A data de início é obrigatória/),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(/A data de término é obrigatória/),
       ).toBeTruthy();
     });
   });
@@ -945,5 +950,209 @@ describe("EventsPage — Série de Eventos", () => {
     });
 
     vi.mocked(window.confirm).mockRestore();
+  });
+});
+
+describe("EventsPage — Validação no Modal", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should keep modal open when submitting empty form", async () => {
+    render(<EventsPage />);
+    openCreateModal();
+
+    fireEvent.click(screen.getByText("Salvar evento"));
+
+    await waitFor(() => {
+      expect(screen.getByText("O nome do evento é obrigatório.")).toBeTruthy();
+    });
+  });
+
+  it("should show per-field errors inside the modal", async () => {
+    render(<EventsPage />);
+    openCreateModal();
+
+    fireEvent.click(screen.getByText("Salvar evento"));
+
+    await waitFor(() => {
+      expect(screen.getByText("O nome do evento é obrigatório.")).toBeTruthy();
+      expect(screen.getByText("A descrição do evento é obrigatória.")).toBeTruthy();
+      expect(screen.getByText("A data de início é obrigatória.")).toBeTruthy();
+      expect(screen.getByText("A data de término é obrigatória.")).toBeTruthy();
+    });
+  });
+
+  it("should set aria-invalid on empty required fields", async () => {
+    const { container } = render(<EventsPage />);
+    openCreateModal();
+
+    fireEvent.click(screen.getByText("Salvar evento"));
+
+    await waitFor(() => {
+      expect(screen.getByText("O nome do evento é obrigatório.")).toBeTruthy();
+    });
+
+    const nomeInput = container.querySelector<HTMLInputElement>('input[name="nome"]');
+    const descInput = container.querySelector<HTMLTextAreaElement>('textarea[name="descricao"]');
+    expect(nomeInput).toHaveAttribute("aria-invalid", "true");
+    expect(descInput).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("should focus the first invalid field on submit", async () => {
+    const { container } = render(<EventsPage />);
+    openCreateModal();
+
+    fireEvent.click(screen.getByText("Salvar evento"));
+
+    await waitFor(() => {
+      expect(screen.getByText("O nome do evento é obrigatório.")).toBeTruthy();
+    });
+
+    const nomeInput = container.querySelector('input[name="nome"]');
+    expect(document.activeElement).toBe(nomeInput);
+  });
+
+  it("should clear field error when user fills the field", async () => {
+    const { container } = render(<EventsPage />);
+    openCreateModal();
+
+    fireEvent.click(screen.getByText("Salvar evento"));
+
+    await waitFor(() => {
+      expect(screen.getByText("O nome do evento é obrigatório.")).toBeTruthy();
+    });
+
+    const nomeInput = container.querySelector<HTMLInputElement>('input[name="nome"]');
+    fireEvent.change(nomeInput!, {
+      target: { value: "Culto" },
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("O nome do evento é obrigatório.")).toBeNull();
+    });
+  });
+
+  it("should show API error inside the modal", async () => {
+    mockCreateEvent.mockRejectedValue(new Error("Conflito de horário detectado."));
+
+    render(<EventsPage />);
+    openCreateModal();
+    fillBasicFields();
+
+    fireEvent.click(screen.getByText("Salvar evento"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Conflito de horário detectado.")).toBeTruthy();
+      expect(screen.getByText("Cancelar")).toBeTruthy();
+    });
+  });
+
+  it("should create valid event normally", async () => {
+    mockCreateEvent.mockResolvedValue({
+      data: { id: "evt-1", nome: "Test" },
+    } as never);
+
+    render(<EventsPage />);
+    openCreateModal();
+    fillBasicFields();
+
+    fireEvent.click(screen.getByText("Salvar evento"));
+
+    await waitFor(() => {
+      expect(mockCreateEvent).toHaveBeenCalled();
+      expect(screen.queryByText("Cancelar")).toBeNull();
+    });
+  });
+
+  it("should show recurrence validation errors inside the modal", async () => {
+    render(<EventsPage />);
+    openCreateModal();
+    fillBasicFields();
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    fireEvent.change(screen.getByLabelText("Data inicial da recorrência"), {
+      target: { value: "2026-10-31" },
+    });
+    fireEvent.change(screen.getByLabelText("Data final da recorrência"), {
+      target: { value: "2026-10-01" },
+    });
+    fireEvent.click(screen.getByText("Dom"));
+
+    fireEvent.click(screen.getByText("Salvar evento"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/A data final da recorrência deve ser maior ou igual/),
+      ).toBeTruthy();
+      expect(screen.getByText("Cancelar")).toBeTruthy();
+    });
+  });
+
+  it("should show per-field error for missing recurrence days", async () => {
+    render(<EventsPage />);
+    openCreateModal();
+    fillBasicFields();
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    fireEvent.change(screen.getByLabelText("Data inicial da recorrência"), {
+      target: { value: "2026-10-01" },
+    });
+    fireEvent.change(screen.getByLabelText("Data final da recorrência"), {
+      target: { value: "2026-10-31" },
+    });
+
+    fireEvent.click(screen.getByText("Salvar evento"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Selecione pelo menos um dia da semana.")).toBeTruthy();
+      expect(screen.getByText("Cancelar")).toBeTruthy();
+    });
+  });
+
+  it("should keep modal open and show errors on edit with invalid data", async () => {
+    mockListEvents.mockResolvedValue({
+      data: [
+        {
+          id: "evt-1",
+          nome: "Culto Especial",
+          descricao: "Teste",
+          dataInicio: "2026-10-04T19:00:00.000Z",
+          dataFim: "2026-10-04T21:00:00.000Z",
+          recorrencia: null,
+          recurrenceGroupId: null,
+          recurrenceType: "NONE",
+          recurrenceDays: [],
+          recurrenceStart: null,
+          recurrenceEnd: null,
+          recurrenceIndex: null,
+          createdAt: "2026-10-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    render(<EventsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Culto Especial")).toBeTruthy();
+    });
+
+    const editButton = screen.getByLabelText("Editar evento");
+    fireEvent.click(editButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Cancelar")).toBeTruthy();
+    });
+
+    fireEvent.change(screen.getByLabelText("Nome"), {
+      target: { value: "" },
+    });
+
+    fireEvent.click(screen.getByText("Salvar evento"));
+
+    await waitFor(() => {
+      expect(screen.getByText("O nome do evento é obrigatório.")).toBeTruthy();
+      expect(screen.getByText("Cancelar")).toBeTruthy();
+    });
   });
 });

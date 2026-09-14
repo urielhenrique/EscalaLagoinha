@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { PencilLine, Plus, ShieldAlert, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, PencilLine, Plus, ShieldAlert, Trash2 } from "lucide-react";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Modal } from "../components/ui/Modal";
 import { PaginationControls } from "../components/ui/PaginationControls";
@@ -37,6 +37,17 @@ type EventForm = {
   recurrenceEnd: string;
   selectedDays: RecurrenceDay[];
 };
+
+type FieldName =
+  | "nome"
+  | "descricao"
+  | "dataInicio"
+  | "dataFim"
+  | "recurrenceStart"
+  | "recurrenceEnd"
+  | "selectedDays";
+
+type FieldErrors = Partial<Record<FieldName, string>>;
 
 const initialForm: EventForm = {
   nome: "",
@@ -94,10 +105,13 @@ export function EventsPage() {
   const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
   const [form, setForm] = useState<EventForm>(initialForm);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const [isSeriesModalOpen, setIsSeriesModalOpen] = useState(false);
   const [seriesEvent, setSeriesEvent] = useState<EventItem | null>(null);
@@ -199,6 +213,8 @@ export function EventsPage() {
     setForm(initialForm);
     setError(null);
     setSuccess(null);
+    setFieldErrors({});
+    setFormError(null);
     setIsModalOpen(true);
   };
 
@@ -216,6 +232,8 @@ export function EventsPage() {
     });
     setError(null);
     setSuccess(null);
+    setFieldErrors({});
+    setFormError(null);
     setIsModalOpen(true);
   };
 
@@ -223,6 +241,8 @@ export function EventsPage() {
     setIsModalOpen(false);
     setEditingEvent(null);
     setForm(initialForm);
+    setFieldErrors({});
+    setFormError(null);
   };
 
   const toggleDay = (day: RecurrenceDay) => {
@@ -235,64 +255,108 @@ export function EventsPage() {
           : [...current.selectedDays, day],
       };
     });
+    setFieldErrors((prev) => {
+      if (prev.selectedDays) {
+        const next = { ...prev };
+        delete next.selectedDays;
+        return next;
+      }
+      return prev;
+    });
   };
 
-  const validateForm = (): string | null => {
-    if (!form.nome || !form.descricao || !form.dataInicio || !form.dataFim) {
-      return "Preencha todos os campos obrigatórios para salvar o evento.";
+  const clearFieldError = (field: FieldName) => {
+    setFieldErrors((prev) => {
+      if (prev[field]) {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      }
+      return prev;
+    });
+  };
+
+  const validateForm = (): { fieldErrors: FieldErrors; formError: string | null } => {
+    const errors: FieldErrors = {};
+
+    if (!form.nome) {
+      errors.nome = "O nome do evento é obrigatório.";
+    }
+    if (!form.descricao) {
+      errors.descricao = "A descrição do evento é obrigatória.";
+    }
+    if (!form.dataInicio) {
+      errors.dataInicio = "A data de início é obrigatória.";
+    }
+    if (!form.dataFim) {
+      errors.dataFim = "A data de término é obrigatória.";
     }
 
-    const dataInicioIso = toIsoOrNull(form.dataInicio);
-    const dataFimIso = toIsoOrNull(form.dataFim);
+    const dataInicioIso = form.dataInicio ? toIsoOrNull(form.dataInicio) : null;
+    const dataFimIso = form.dataFim ? toIsoOrNull(form.dataFim) : null;
 
-    if (!dataInicioIso || !dataFimIso) {
-      return "Datas inválidas. Verifique os horários informados.";
+    if (form.dataInicio && !dataInicioIso) {
+      errors.dataInicio = "Data de início inválida.";
+    }
+    if (form.dataFim && !dataFimIso) {
+      errors.dataFim = "Data de término inválida.";
     }
 
-    if (new Date(dataFimIso) <= new Date(dataInicioIso)) {
-      return "A data final deve ser posterior à data inicial.";
+    if (dataInicioIso && dataFimIso && new Date(dataFimIso) <= new Date(dataInicioIso)) {
+      errors.dataFim = "A data final deve ser posterior à data inicial.";
     }
 
     if (form.isRecurring) {
       if (!form.recurrenceStart) {
-        return "Informe a data inicial da recorrência.";
+        errors.recurrenceStart = "Informe a data inicial da recorrência.";
       }
-
       if (!form.recurrenceEnd) {
-        return "Informe a data final da recorrência.";
+        errors.recurrenceEnd = "Informe a data final da recorrência.";
       }
 
-      const recStartIso = toIsoDate(form.recurrenceStart);
-      const recEndIso = toIsoDate(form.recurrenceEnd);
-
-      if (new Date(recEndIso) < new Date(recStartIso)) {
-        return "A data final da recorrência deve ser maior ou igual à data inicial.";
+      if (form.recurrenceStart && form.recurrenceEnd) {
+        const recStartIso = toIsoDate(form.recurrenceStart);
+        const recEndIso = toIsoDate(form.recurrenceEnd);
+        if (new Date(recEndIso) < new Date(recStartIso)) {
+          errors.recurrenceEnd = "A data final da recorrência deve ser maior ou igual à data inicial.";
+        }
       }
 
       if (form.selectedDays.length === 0) {
-        return "Selecione pelo menos um dia da semana.";
+        errors.selectedDays = "Selecione pelo menos um dia da semana.";
       }
 
       if (previewTotal > 52) {
-        return "O período selecionado gera mais de 52 ocorrências.";
+        return { fieldErrors: errors, formError: "O período selecionado gera mais de 52 ocorrências." };
       }
 
-      if (previewTotal === 0) {
-        return "Nenhuma ocorrência válida gerada para a configuração informada.";
+      if (previewTotal === 0 && form.recurrenceStart && form.recurrenceEnd && form.selectedDays.length > 0) {
+        return { fieldErrors: errors, formError: "Nenhuma ocorrência válida gerada para a configuração informada." };
       }
     }
 
-    return null;
+    return { fieldErrors: errors, formError: null };
   };
 
   const handleSave = async () => {
-    const validationError = validateForm();
-    if (validationError) {
-      setError(validationError);
+    const { fieldErrors: validationErrors, formError: generalError } = validateForm();
+    if (Object.keys(validationErrors).length > 0 || generalError) {
+      setFieldErrors(validationErrors);
+      setFormError(generalError);
+
+      const firstErrorField = (["nome", "descricao", "dataInicio", "dataFim", "recurrenceStart", "recurrenceEnd", "selectedDays"] as FieldName[]).find(
+        (f) => validationErrors[f],
+      );
+      if (firstErrorField) {
+        const el = formRef.current?.querySelector(`[name="${firstErrorField}"]`) as HTMLElement | null;
+        el?.focus();
+      }
       return;
     }
 
     setIsSaving(true);
+    setFieldErrors({});
+    setFormError(null);
     setError(null);
     setSuccess(null);
 
@@ -345,7 +409,7 @@ export function EventsPage() {
       await loadEvents();
       closeModal();
     } catch (requestError) {
-      setError(
+      setFormError(
         getErrorMessage(requestError, "Não foi possível salvar o evento."),
       );
     } finally {
@@ -632,62 +696,124 @@ export function EventsPage() {
           </>
         }
       >
-        <div className="space-y-3">
+        <form ref={formRef} noValidate onSubmit={(e) => e.preventDefault()} className="space-y-3">
+          {formError ? (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200"
+            >
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{formError}</span>
+            </div>
+          ) : null}
+
           <label className="block space-y-1 text-sm">
             <span className="text-app-200">Nome</span>
             <input
+              name="nome"
               value={form.nome}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, nome: event.target.value }))
-              }
-              className="w-full rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-app-100 outline-none"
+              onChange={(event) => {
+                setForm((current) => ({ ...current, nome: event.target.value }));
+                clearFieldError("nome");
+              }}
+              aria-invalid={!!fieldErrors.nome}
+              aria-describedby={fieldErrors.nome ? "error-nome" : undefined}
+              className={`w-full rounded-xl border bg-app-850 px-3 py-2 text-app-100 outline-none ${
+                fieldErrors.nome
+                  ? "border-rose-400/60 focus:border-rose-400 focus:ring-1 focus:ring-rose-400/30"
+                  : "border-white/10 focus:border-brand-400/50 focus:ring-1 focus:ring-brand-400/20"
+              }`}
             />
+            {fieldErrors.nome ? (
+              <p id="error-nome" className="text-xs text-rose-300" role="alert">
+                {fieldErrors.nome}
+              </p>
+            ) : null}
           </label>
 
           <label className="block space-y-1 text-sm">
             <span className="text-app-200">Descrição</span>
             <textarea
+              name="descricao"
               value={form.descricao}
-              onChange={(event) =>
+              onChange={(event) => {
                 setForm((current) => ({
                   ...current,
                   descricao: event.target.value,
-                }))
-              }
+                }));
+                clearFieldError("descricao");
+              }}
               rows={3}
-              className="w-full rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-app-100 outline-none"
+              aria-invalid={!!fieldErrors.descricao}
+              aria-describedby={fieldErrors.descricao ? "error-descricao" : undefined}
+              className={`w-full rounded-xl border bg-app-850 px-3 py-2 text-app-100 outline-none ${
+                fieldErrors.descricao
+                  ? "border-rose-400/60 focus:border-rose-400 focus:ring-1 focus:ring-rose-400/30"
+                  : "border-white/10 focus:border-brand-400/50 focus:ring-1 focus:ring-brand-400/20"
+              }`}
             />
+            {fieldErrors.descricao ? (
+              <p id="error-descricao" className="text-xs text-rose-300" role="alert">
+                {fieldErrors.descricao}
+              </p>
+            ) : null}
           </label>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <label className="block space-y-1 text-sm">
               <span className="text-app-200">Data início</span>
               <input
+                name="dataInicio"
                 type="datetime-local"
                 value={form.dataInicio}
-                onChange={(event) =>
+                onChange={(event) => {
                   setForm((current) => ({
                     ...current,
                     dataInicio: event.target.value,
-                  }))
-                }
-                className="w-full rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-app-100 outline-none"
+                  }));
+                  clearFieldError("dataInicio");
+                }}
+                aria-invalid={!!fieldErrors.dataInicio}
+                aria-describedby={fieldErrors.dataInicio ? "error-dataInicio" : undefined}
+                className={`w-full rounded-xl border bg-app-850 px-3 py-2 text-app-100 outline-none ${
+                  fieldErrors.dataInicio
+                    ? "border-rose-400/60 focus:border-rose-400 focus:ring-1 focus:ring-rose-400/30"
+                    : "border-white/10 focus:border-brand-400/50 focus:ring-1 focus:ring-brand-400/20"
+                }`}
               />
+              {fieldErrors.dataInicio ? (
+                <p id="error-dataInicio" className="text-xs text-rose-300" role="alert">
+                  {fieldErrors.dataInicio}
+                </p>
+              ) : null}
             </label>
 
             <label className="block space-y-1 text-sm">
               <span className="text-app-200">Data fim</span>
               <input
+                name="dataFim"
                 type="datetime-local"
                 value={form.dataFim}
-                onChange={(event) =>
+                onChange={(event) => {
                   setForm((current) => ({
                     ...current,
                     dataFim: event.target.value,
-                  }))
-                }
-                className="w-full rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-app-100 outline-none"
+                  }));
+                  clearFieldError("dataFim");
+                }}
+                aria-invalid={!!fieldErrors.dataFim}
+                aria-describedby={fieldErrors.dataFim ? "error-dataFim" : undefined}
+                className={`w-full rounded-xl border bg-app-850 px-3 py-2 text-app-100 outline-none ${
+                  fieldErrors.dataFim
+                    ? "border-rose-400/60 focus:border-rose-400 focus:ring-1 focus:ring-rose-400/30"
+                    : "border-white/10 focus:border-brand-400/50 focus:ring-1 focus:ring-brand-400/20"
+                }`}
               />
+              {fieldErrors.dataFim ? (
+                <p id="error-dataFim" className="text-xs text-rose-300" role="alert">
+                  {fieldErrors.dataFim}
+                </p>
+              ) : null}
             </label>
           </div>
 
@@ -750,6 +876,11 @@ export function EventsPage() {
                         </button>
                       ))}
                     </div>
+                    {fieldErrors.selectedDays ? (
+                      <p id="error-selectedDays" className="text-xs text-rose-300" role="alert">
+                        {fieldErrors.selectedDays}
+                      </p>
+                    ) : null}
                   </div>
 
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -758,16 +889,29 @@ export function EventsPage() {
                         Data inicial da recorrência
                       </span>
                       <input
+                        name="recurrenceStart"
                         type="date"
                         value={form.recurrenceStart}
-                        onChange={(event) =>
+                        onChange={(event) => {
                           setForm((current) => ({
                             ...current,
                             recurrenceStart: event.target.value,
-                          }))
-                        }
-                        className="w-full rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-app-100 outline-none"
+                          }));
+                          clearFieldError("recurrenceStart");
+                        }}
+                        aria-invalid={!!fieldErrors.recurrenceStart}
+                        aria-describedby={fieldErrors.recurrenceStart ? "error-recurrenceStart" : undefined}
+                        className={`w-full rounded-xl border bg-app-850 px-3 py-2 text-app-100 outline-none ${
+                          fieldErrors.recurrenceStart
+                            ? "border-rose-400/60 focus:border-rose-400 focus:ring-1 focus:ring-rose-400/30"
+                            : "border-white/10 focus:border-brand-400/50 focus:ring-1 focus:ring-brand-400/20"
+                        }`}
                       />
+                      {fieldErrors.recurrenceStart ? (
+                        <p id="error-recurrenceStart" className="text-xs text-rose-300" role="alert">
+                          {fieldErrors.recurrenceStart}
+                        </p>
+                      ) : null}
                     </label>
 
                     <label className="block space-y-1 text-sm">
@@ -775,16 +919,29 @@ export function EventsPage() {
                         Data final da recorrência
                       </span>
                       <input
+                        name="recurrenceEnd"
                         type="date"
                         value={form.recurrenceEnd}
-                        onChange={(event) =>
+                        onChange={(event) => {
                           setForm((current) => ({
                             ...current,
                             recurrenceEnd: event.target.value,
-                          }))
-                        }
-                        className="w-full rounded-xl border border-white/10 bg-app-850 px-3 py-2 text-app-100 outline-none"
+                          }));
+                          clearFieldError("recurrenceEnd");
+                        }}
+                        aria-invalid={!!fieldErrors.recurrenceEnd}
+                        aria-describedby={fieldErrors.recurrenceEnd ? "error-recurrenceEnd" : undefined}
+                        className={`w-full rounded-xl border bg-app-850 px-3 py-2 text-app-100 outline-none ${
+                          fieldErrors.recurrenceEnd
+                            ? "border-rose-400/60 focus:border-rose-400 focus:ring-1 focus:ring-rose-400/30"
+                            : "border-white/10 focus:border-brand-400/50 focus:ring-1 focus:ring-brand-400/20"
+                        }`}
                       />
+                      {fieldErrors.recurrenceEnd ? (
+                        <p id="error-recurrenceEnd" className="text-xs text-rose-300" role="alert">
+                          {fieldErrors.recurrenceEnd}
+                        </p>
+                      ) : null}
                     </label>
                   </div>
 
@@ -814,7 +971,7 @@ export function EventsPage() {
               ) : null}
             </div>
           ) : null}
-        </div>
+        </form>
       </Modal>
 
       {seriesEvent ? (
