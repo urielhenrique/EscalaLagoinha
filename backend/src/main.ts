@@ -74,16 +74,21 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Bypass CORS for internal health checks (no Origin header).
-  // Docker / Coolify healthchecks use curl without Origin, which the
-  // production CORS config rejects. All other routes keep the full CORS logic.
+  // Bypass CORS for paths that receive requests without an Origin header
+  // (e.g. Docker/Coolify healthchecks, Google OAuth redirects).
+  // All other routes keep the full CORS logic.
+  const CORS_BYPASS_PATHS = [
+    "/health",
+    "/api/integrations/google/callback",
+  ];
+
   app.use(
     (
       req: { path?: string; headers?: Record<string, string | undefined> },
       res: unknown,
       next: () => void,
     ) => {
-      if (req.path === "/health" && !req.headers?.origin) {
+      if (CORS_BYPASS_PATHS.includes(req.path ?? "") && !req.headers?.origin) {
         return next();
       }
       corsFn(req, res, next);

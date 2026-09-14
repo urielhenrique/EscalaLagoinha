@@ -5,7 +5,7 @@ import { HealthController } from "./health.controller";
 import { HealthService } from "./health.service";
 import { PrismaService } from "../prisma/prisma.service";
 
-describe("Health endpoint — CORS bypass for internal checks", () => {
+describe("CORS bypass for paths without Origin header", () => {
   let app: INestApplication;
 
   beforeAll(async () => {
@@ -49,13 +49,18 @@ describe("Health endpoint — CORS bypass for internal checks", () => {
       credentials: true,
     });
 
+    const CORS_BYPASS_PATHS = ["/health", "/api/integrations/google/callback"];
+
     app.use(
       (
         req: { path?: string; headers?: Record<string, string | undefined> },
         res: unknown,
         next: () => void,
       ) => {
-        if (req.path === "/health" && !req.headers?.origin) {
+        if (
+          CORS_BYPASS_PATHS.includes(req.path ?? "") &&
+          !req.headers?.origin
+        ) {
           return next();
         }
         corsFn(req, res, next);
@@ -69,29 +74,60 @@ describe("Health endpoint — CORS bypass for internal checks", () => {
     await app.close();
   });
 
-  it("GET /health without Origin → 200 (CORS bypassed)", async () => {
-    const res = await request(app.getHttpServer()).get("/health");
-    expect(res.status).toBe(200);
-    expect(res.body.status).toBe("ok");
+  describe("GET /health", () => {
+    it("without Origin → 200 (CORS bypassed)", async () => {
+      const res = await request(app.getHttpServer()).get("/health");
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("ok");
+    });
+
+    it("with allowed Origin → 200 (CORS passes)", async () => {
+      const res = await request(app.getHttpServer())
+        .get("/health")
+        .set("Origin", "https://app.example.com");
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("ok");
+    });
+
+    it("with disallowed Origin → CORS error", async () => {
+      const res = await request(app.getHttpServer())
+        .get("/health")
+        .set("Origin", "https://evil.com");
+      expect(res.status).toBe(500);
+    });
   });
 
-  it("GET /health with allowed Origin → 200 (CORS passes)", async () => {
-    const res = await request(app.getHttpServer())
-      .get("/health")
-      .set("Origin", "https://app.example.com");
-    expect(res.status).toBe(200);
-    expect(res.body.status).toBe("ok");
+  describe("GET /api/integrations/google/callback", () => {
+    it("without Origin → not blocked by CORS (Google redirect)", async () => {
+      const res = await request(app.getHttpServer())
+        .get("/api/integrations/google/callback?code=test&state=test");
+      expect(res.status).not.toBe(500);
+    });
+
+    it("with allowed Origin → CORS passes", async () => {
+      const res = await request(app.getHttpServer())
+        .get("/api/integrations/google/callback?code=test&state=test")
+        .set("Origin", "https://app.example.com");
+      expect(res.status).not.toBe(500);
+    });
+
+    it("with disallowed Origin → CORS blocked", async () => {
+      const res = await request(app.getHttpServer())
+        .get("/api/integrations/google/callback?code=test&state=test")
+        .set("Origin", "https://evil.com");
+      expect(res.status).toBe(500);
+    });
   });
 
-  it("GET /health with disallowed Origin → CORS error", async () => {
-    const res = await request(app.getHttpServer())
-      .get("/health")
-      .set("Origin", "https://evil.com");
-    expect(res.status).toBe(500);
-  });
+  describe("Other API routes", () => {
+    it("GET /api/health without Origin → CORS blocked (not bypassed)", async () => {
+      const res = await request(app.getHttpServer()).get("/api/health");
+      expect(res.status).toBe(500);
+    });
 
-  it("GET /api/health without Origin → CORS blocked (not bypassed for non-/health path)", async () => {
-    const res = await request(app.getHttpServer()).get("/api/health");
-    expect(res.status).toBe(500);
+    it("GET /api/events without Origin → CORS blocked", async () => {
+      const res = await request(app.getHttpServer()).get("/api/events");
+      expect(res.status).toBe(500);
+    });
   });
 });
