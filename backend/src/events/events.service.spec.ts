@@ -1731,14 +1731,14 @@ describe("EventsService — Recorrência", () => {
   });
 
   describe("remove — erro de Schedule associado", () => {
-    it("should throw BadRequestException when schedules exist", async () => {
+    it("should throw BadRequestException when schedules exist (P2003)", async () => {
       prismaMock.event.findFirst.mockResolvedValue({ id: "evt-1" });
 
       const prismaError = new Prisma.PrismaClientKnownRequestError(
         "Foreign key constraint violated on the constraint: `Schedule_eventId_fkey`",
         {
           code: "P2003",
-          clientVersion: "5.0.0",
+          clientVersion: "6.6.0",
           meta: { field_name: "Schedule_eventId_fkey" },
         },
       );
@@ -1750,6 +1750,97 @@ describe("EventsService — Recorrência", () => {
 
       await expect(service.remove("evt-1", adminUser)).rejects.toThrow(
         "escalas vinculadas",
+      );
+    });
+
+    it("should throw BadRequestException for PostgreSQL RESTRICT violation (23001)", async () => {
+      prismaMock.event.findFirst.mockResolvedValue({ id: "evt-1" });
+
+      const pgError = new Prisma.PrismaClientUnknownRequestError(
+        'update or delete on table "Event" violates RESTRICT setting of foreign key constraint "Schedule_eventId_fkey" on table "Schedule" — 23001',
+        { clientVersion: "6.6.0" },
+      );
+      prismaMock.event.delete.mockRejectedValue(pgError);
+
+      await expect(service.remove("evt-1", adminUser)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      await expect(service.remove("evt-1", adminUser)).rejects.toThrow(
+        "escalas vinculadas",
+      );
+    });
+
+    it("should not delete the event when FK violation occurs", async () => {
+      prismaMock.event.findFirst.mockResolvedValue({ id: "evt-1" });
+
+      const pgError = new Prisma.PrismaClientUnknownRequestError(
+        'violates RESTRICT setting of foreign key constraint "Schedule_eventId_fkey" — 23001',
+        { clientVersion: "6.6.0" },
+      );
+      prismaMock.event.delete.mockRejectedValue(pgError);
+
+      await expect(service.remove("evt-1", adminUser)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(prismaMock.event.delete).toHaveBeenCalledTimes(1);
+    });
+
+    it("should allow deleting event without schedules", async () => {
+      prismaMock.event.findFirst.mockResolvedValue({ id: "evt-1" });
+      prismaMock.event.delete.mockResolvedValue({
+        id: "evt-1",
+        churchId: "church-1",
+        nome: "Culto",
+        descricao: "desc",
+        dataInicio: new Date(),
+        dataFim: new Date(),
+        recorrencia: null,
+        recurrenceGroupId: null,
+        recurrenceType: "NONE",
+        recurrenceDays: [],
+        recurrenceStart: null,
+        recurrenceEnd: null,
+        recurrenceIndex: null,
+        createdAt: new Date(),
+      });
+
+      const result = await service.remove("evt-1", adminUser);
+
+      expect(result).toHaveProperty("id", "evt-1");
+      expect(prismaMock.event.delete).toHaveBeenCalledTimes(1);
+    });
+
+    it("should re-throw unknown errors that are not FK violations", async () => {
+      prismaMock.event.findFirst.mockResolvedValue({ id: "evt-1" });
+
+      const unknownError = new Prisma.PrismaClientUnknownRequestError(
+        "Something unexpected",
+        { clientVersion: "6.6.0" },
+      );
+      prismaMock.event.delete.mockRejectedValue(unknownError);
+
+      await expect(service.remove("evt-1", adminUser)).rejects.toThrow(
+        "Something unexpected",
+      );
+    });
+
+    it("should re-throw known errors that are not P2003", async () => {
+      prismaMock.event.findFirst.mockResolvedValue({ id: "evt-1" });
+
+      const knownError = new Prisma.PrismaClientKnownRequestError(
+        "Unique constraint failed",
+        {
+          code: "P2002",
+          clientVersion: "6.6.0",
+          meta: { target: ["id"] },
+        },
+      );
+      prismaMock.event.delete.mockRejectedValue(knownError);
+
+      await expect(service.remove("evt-1", adminUser)).rejects.toThrow(
+        Prisma.PrismaClientKnownRequestError,
       );
     });
   });

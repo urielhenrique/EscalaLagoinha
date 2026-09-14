@@ -478,6 +478,16 @@ export class EventsService {
           "Não foi possível excluir esta ocorrência porque existem escalas vinculadas a ela.",
         );
       }
+
+      if (
+        error instanceof Prisma.PrismaClientUnknownRequestError &&
+        error.message.includes("23001")
+      ) {
+        throw new BadRequestException(
+          "Não foi possível excluir esta ocorrência porque existem escalas vinculadas a ela.",
+        );
+      }
+
       throw error;
     }
   }
