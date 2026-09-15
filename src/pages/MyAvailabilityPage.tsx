@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarX2, Sparkles, Save, Trash2 } from "lucide-react";
 import { SectionHeader } from "../components/ui/SectionHeader";
+import { PreferenceSelect } from "../components/ui/PreferenceSelect";
 import { getErrorMessage } from "../services/api";
 import {
   addBlockedDate,
@@ -49,6 +50,13 @@ const preferenceStyles: Record<SlotValue, string> = {
   PREFERENCIAL: "border-brand-400/30 bg-brand-500/15 text-brand-100",
   INDISPONIVEL: "border-rose-400/30 bg-rose-500/10 text-rose-200",
 };
+
+const slotOptions: Array<{ value: SlotValue; label: string }> = [
+  { value: "NAO_DEFINIDO", label: "Não definido" },
+  { value: "DISPONIVEL", label: "Disponível" },
+  { value: "PREFERENCIAL", label: "Preferencial" },
+  { value: "INDISPONIVEL", label: "Indisponível" },
+];
 
 function preferenceLabel(value: SlotValue) {
   if (value === "NAO_DEFINIDO") return "Não definido";
@@ -594,26 +602,22 @@ export function MyAvailabilityPage() {
                         const key = slotKey(day.value, period.value);
                         return (
                           <td key={key} className="px-2 py-2">
-                            <select
+                            <PreferenceSelect
                               value={slotMap[key] ?? "NAO_DEFINIDO"}
-                              onChange={(event) =>
+                              options={slotOptions}
+                              onChange={(val) =>
                                 setSlotMap((current) => ({
                                   ...current,
-                                  [key]: event.target.value as SlotValue,
+                                  [key]: val as SlotValue,
                                 }))
                               }
-                              className={[
-                                "w-full rounded-lg border px-2 py-2 text-xs outline-none",
+                              triggerClassName={
                                 preferenceStyles[
                                   slotMap[key] ?? "NAO_DEFINIDO"
-                                ],
-                              ].join(" ")}
-                            >
-                              <option value="NAO_DEFINIDO">Não definido</option>
-                              <option value="DISPONIVEL">Disponível</option>
-                              <option value="PREFERENCIAL">Preferencial</option>
-                              <option value="INDISPONIVEL">Indisponível</option>
-                            </select>
+                                ]
+                              }
+                              aria-label={`Preferência ${day.label} ${period.label}`}
+                            />
                             <p className="mt-1 text-[10px] text-app-300">
                               {preferenceLabel(slotMap[key] ?? "NAO_DEFINIDO")}
                             </p>
