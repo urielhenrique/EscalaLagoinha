@@ -11,7 +11,6 @@ import { Perfil, Prisma } from "@prisma/client";
 import { RecurrenceTypeDto } from "./dto/create-event.dto";
 import { UpdateEventDto } from "./dto/update-event.dto";
 import { GoogleCalendarSyncService } from "../integrations/google-calendar/google-calendar-sync.service";
-import { GoogleCalendarService } from "../integrations/google-calendar/google-calendar.service";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
 
 type TxCreateFn = (args: Record<string, unknown>) => Promise<Record<string, unknown>>;
@@ -32,6 +31,9 @@ describe("EventsService — Recorrência", () => {
       },
       googleCalendarConnection: {
         findUnique: jest.fn().mockResolvedValue(null),
+      },
+      schedule: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
       $transaction: jest.fn(),
     };
@@ -71,11 +73,11 @@ describe("EventsService — Recorrência", () => {
         { provide: PrismaService, useValue: prismaMock },
         {
           provide: GoogleCalendarSyncService,
-          useValue: { syncEvent: jest.fn(), deleteGoogleEvent: jest.fn() },
-        },
-        {
-          provide: GoogleCalendarService,
-          useValue: { refreshAccessToken: jest.fn() },
+          useValue: {
+            syncAllEventSchedules: jest.fn().mockResolvedValue(undefined),
+            unlinkAllEventSchedules: jest.fn().mockResolvedValue({ success: true, errors: [] }),
+            getEventSyncStatuses: jest.fn().mockResolvedValue([]),
+          },
         },
         {
           provide: AuditLogsService,
@@ -2612,13 +2614,10 @@ describe("EventsService — Google Calendar Sync", () => {
   let prismaMock: ReturnType<typeof createPrismaMock>;
 
   const mockSyncService = {
-    syncEvent: jest.fn(),
-    deleteGoogleEvent: jest.fn(),
+    syncAllEventSchedules: jest.fn().mockResolvedValue(undefined),
+    unlinkAllEventSchedules: jest.fn().mockResolvedValue({ success: true, errors: [] }),
+    getEventSyncStatuses: jest.fn().mockResolvedValue([]),
     deleteGoogleEventByGoogleId: jest.fn(),
-  };
-
-  const mockGoogleService = {
-    refreshAccessToken: jest.fn(),
   };
 
   const mockAuditLogsService = {
@@ -2637,6 +2636,9 @@ describe("EventsService — Google Calendar Sync", () => {
       },
       googleCalendarConnection: {
         findUnique: jest.fn(),
+      },
+      schedule: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
       $transaction: jest.fn(),
     };
@@ -2675,7 +2677,6 @@ describe("EventsService — Google Calendar Sync", () => {
         EventsService,
         { provide: PrismaService, useValue: prismaMock },
         { provide: GoogleCalendarSyncService, useValue: mockSyncService },
-        { provide: GoogleCalendarService, useValue: mockGoogleService },
         { provide: AuditLogsService, useValue: mockAuditLogsService },
       ],
     }).compile();
@@ -2699,36 +2700,22 @@ describe("EventsService — Google Calendar Sync", () => {
       prismaMock.googleCalendarConnection.findUnique.mockResolvedValue({
         id: "conn-1",
       });
-      mockSyncService.syncEvent.mockResolvedValue({
-        status: "SYNCED",
-        googleEventId: "escala-evt1",
-        error: null,
-      });
 
       const result = await service.syncEventToGoogle(
-        "user-1",
         "evt-1",
         adminUser,
       );
 
-      expect(result.status).toBe("SYNCED");
-      expect(result.googleEventId).toBe("escala-evt1");
-      expect(mockSyncService.syncEvent).toHaveBeenCalledWith("user-1", {
-        eventId: "evt-1",
-        churchId: "church-1",
-        nome: "Culto",
-        descricao: "desc",
-        dataInicio: expect.any(Date),
-        dataFim: expect.any(Date),
-        recurrenceGroupId: null,
-      });
+      expect(result.eventId).toBe("evt-1");
+      expect(result.schedules).toBeDefined();
+      expect(mockSyncService.syncAllEventSchedules).toHaveBeenCalled();
     });
 
     it("should throw NotFoundException for event not found", async () => {
       prismaMock.event.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.syncEventToGoogle("user-1", "evt-999", adminUser),
+        service.syncEventToGoogle("evt-999", adminUser),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -2736,7 +2723,7 @@ describe("EventsService — Google Calendar Sync", () => {
       prismaMock.event.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.syncEventToGoogle("user-b", "evt-1", userFromChurchB),
+        service.syncEventToGoogle("evt-1", userFromChurchB),
       ).rejects.toThrow(NotFoundException);
 
       expect(prismaMock.event.findFirst).toHaveBeenCalledWith(
@@ -2760,14 +2747,13 @@ describe("EventsService — Google Calendar Sync", () => {
       });
       prismaMock.googleCalendarConnection.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.syncEventToGoogle("user-1", "evt-1", adminUser),
-      ).rejects.toThrow(BadRequestException);
+      const result = await service.syncEventToGoogle("evt-1", adminUser);
+      expect(result.eventId).toBe("evt-1");
     });
 
     it("should throw ForbiddenException for user without church", async () => {
       await expect(
-        service.syncEventToGoogle("user-2", "evt-1", userWithoutChurch),
+        service.syncEventToGoogle("evt-1", userWithoutChurch),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -2786,20 +2772,14 @@ describe("EventsService — Google Calendar Sync", () => {
       prismaMock.googleCalendarConnection.findUnique.mockResolvedValue({
         id: "conn-1",
       });
-      mockSyncService.syncEvent.mockResolvedValue({
-        status: "ERROR",
-        googleEventId: null,
-        error: "Token expired",
-      });
 
       const result = await service.syncEventToGoogle(
-        "user-1",
         "evt-1",
         adminUser,
       );
 
-      expect(result.status).toBe("ERROR");
-      expect(result.googleSyncError).toBe("Token expired");
+      expect(result.eventId).toBe("evt-1");
+      expect(result.schedules).toBeDefined();
     });
   });
 
@@ -2807,32 +2787,29 @@ describe("EventsService — Google Calendar Sync", () => {
     it("should unlink event from Google Calendar", async () => {
       prismaMock.event.findFirst.mockResolvedValue({
         id: "evt-1",
+        churchId: "church-1",
         googleEventId: "escala-evt1",
         googleSyncStatus: "SYNCED",
       });
-      mockSyncService.deleteGoogleEvent.mockResolvedValue({
+      mockSyncService.unlinkAllEventSchedules.mockResolvedValue({
         success: true,
-        error: null,
+        errors: [],
       });
 
       const result = await service.unlinkEventFromGoogle(
-        "user-1",
         "evt-1",
         adminUser,
       );
 
       expect(result.success).toBe(true);
-      expect(mockSyncService.deleteGoogleEvent).toHaveBeenCalledWith(
-        "user-1",
-        "evt-1",
-      );
+      expect(mockSyncService.unlinkAllEventSchedules).toHaveBeenCalledWith("evt-1");
     });
 
     it("should throw NotFoundException for event not found", async () => {
       prismaMock.event.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.unlinkEventFromGoogle("user-1", "evt-999", adminUser),
+        service.unlinkEventFromGoogle("evt-999", adminUser),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -2840,23 +2817,23 @@ describe("EventsService — Google Calendar Sync", () => {
       prismaMock.event.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.unlinkEventFromGoogle("user-b", "evt-1", userFromChurchB),
+        service.unlinkEventFromGoogle("evt-1", userFromChurchB),
       ).rejects.toThrow(NotFoundException);
     });
 
     it("should succeed even if event has no googleEventId", async () => {
       prismaMock.event.findFirst.mockResolvedValue({
         id: "evt-1",
+        churchId: "church-1",
         googleEventId: null,
         googleSyncStatus: "NONE",
       });
-      mockSyncService.deleteGoogleEvent.mockResolvedValue({
+      mockSyncService.unlinkAllEventSchedules.mockResolvedValue({
         success: true,
-        error: null,
+        errors: [],
       });
 
       const result = await service.unlinkEventFromGoogle(
-        "user-1",
         "evt-1",
         adminUser,
       );
@@ -2867,27 +2844,27 @@ describe("EventsService — Google Calendar Sync", () => {
     it("should return error when Google deletion fails", async () => {
       prismaMock.event.findFirst.mockResolvedValue({
         id: "evt-1",
+        churchId: "church-1",
         googleEventId: "escala-evt1",
         googleSyncStatus: "SYNCED",
       });
-      mockSyncService.deleteGoogleEvent.mockResolvedValue({
+      mockSyncService.unlinkAllEventSchedules.mockResolvedValue({
         success: false,
-        error: "API error",
+        errors: ["API error"],
       });
 
       const result = await service.unlinkEventFromGoogle(
-        "user-1",
         "evt-1",
         adminUser,
       );
 
       expect(result.success).toBe(false);
-      expect(result.googleSyncError).toBe("API error");
+      expect(result.errors).toContain("API error");
     });
 
     it("should throw ForbiddenException for user without church", async () => {
       await expect(
-        service.unlinkEventFromGoogle("user-2", "evt-1", userWithoutChurch),
+        service.unlinkEventFromGoogle("evt-1", userWithoutChurch),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -2906,13 +2883,8 @@ describe("EventsService — Google Calendar Sync", () => {
       prismaMock.googleCalendarConnection.findUnique.mockResolvedValue({
         id: "conn-1",
       });
-      mockSyncService.syncEvent.mockResolvedValue({
-        status: "SYNCED",
-        googleEventId: "escala-evt1",
-        error: null,
-      });
 
-      await service.syncEventToGoogle("user-1", "evt-1", adminUser);
+      await service.syncEventToGoogle("evt-1", adminUser);
 
       expect(mockAuditLogsService.log).toHaveBeenCalledWith({
         userId: "user-1",
@@ -2920,7 +2892,7 @@ describe("EventsService — Google Calendar Sync", () => {
         action: "GOOGLE_CALENDAR_SYNC",
         module: "EVENTS",
         targetId: "evt-1",
-        newValue: { status: "SYNCED", googleEventId: "escala-evt1" },
+        newValue: expect.any(Object),
       });
     });
 
@@ -2939,13 +2911,8 @@ describe("EventsService — Google Calendar Sync", () => {
       prismaMock.googleCalendarConnection.findUnique.mockResolvedValue({
         id: "conn-1",
       });
-      mockSyncService.syncEvent.mockResolvedValue({
-        status: "ERROR",
-        googleEventId: null,
-        error: "Token expired",
-      });
 
-      await service.syncEventToGoogle("user-1", "evt-1", adminUser);
+      await service.syncEventToGoogle("evt-1", adminUser);
 
       expect(mockAuditLogsService.log).toHaveBeenCalledWith({
         userId: "user-1",
@@ -2953,7 +2920,7 @@ describe("EventsService — Google Calendar Sync", () => {
         action: "GOOGLE_CALENDAR_SYNC",
         module: "EVENTS",
         targetId: "evt-1",
-        newValue: { status: "ERROR", googleEventId: null },
+        newValue: expect.any(Object),
       });
     });
 
@@ -2961,7 +2928,7 @@ describe("EventsService — Google Calendar Sync", () => {
       prismaMock.event.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.syncEventToGoogle("user-1", "evt-999", adminUser),
+        service.syncEventToGoogle("evt-999", adminUser),
       ).rejects.toThrow(NotFoundException);
 
       expect(mockAuditLogsService.log).not.toHaveBeenCalled();
@@ -2981,25 +2948,24 @@ describe("EventsService — Google Calendar Sync", () => {
       });
       prismaMock.googleCalendarConnection.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.syncEventToGoogle("user-1", "evt-1", adminUser),
-      ).rejects.toThrow(BadRequestException);
+      await service.syncEventToGoogle("evt-1", adminUser);
 
-      expect(mockAuditLogsService.log).not.toHaveBeenCalled();
+      expect(mockAuditLogsService.log).toHaveBeenCalled();
     });
 
     it("should log audit on successful unlink", async () => {
       prismaMock.event.findFirst.mockResolvedValue({
         id: "evt-1",
+        churchId: "church-1",
         googleEventId: "escala-evt1",
         googleSyncStatus: "SYNCED",
       });
-      mockSyncService.deleteGoogleEvent.mockResolvedValue({
+      mockSyncService.unlinkAllEventSchedules.mockResolvedValue({
         success: true,
-        error: null,
+        errors: [],
       });
 
-      await service.unlinkEventFromGoogle("user-1", "evt-1", adminUser);
+      await service.unlinkEventFromGoogle("evt-1", adminUser);
 
       expect(mockAuditLogsService.log).toHaveBeenCalledWith({
         userId: "user-1",
@@ -3014,15 +2980,16 @@ describe("EventsService — Google Calendar Sync", () => {
     it("should log audit on unlink failure", async () => {
       prismaMock.event.findFirst.mockResolvedValue({
         id: "evt-1",
+        churchId: "church-1",
         googleEventId: "escala-evt1",
         googleSyncStatus: "SYNCED",
       });
-      mockSyncService.deleteGoogleEvent.mockResolvedValue({
+      mockSyncService.unlinkAllEventSchedules.mockResolvedValue({
         success: false,
-        error: "API error",
+        errors: ["API error"],
       });
 
-      await service.unlinkEventFromGoogle("user-1", "evt-1", adminUser);
+      await service.unlinkEventFromGoogle("evt-1", adminUser);
 
       expect(mockAuditLogsService.log).toHaveBeenCalledWith({
         userId: "user-1",
@@ -3038,7 +3005,7 @@ describe("EventsService — Google Calendar Sync", () => {
       prismaMock.event.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.unlinkEventFromGoogle("user-1", "evt-999", adminUser),
+        service.unlinkEventFromGoogle("evt-999", adminUser),
       ).rejects.toThrow(NotFoundException);
 
       expect(mockAuditLogsService.log).not.toHaveBeenCalled();
@@ -3059,13 +3026,8 @@ describe("EventsService — Google Calendar Sync", () => {
       prismaMock.googleCalendarConnection.findUnique.mockResolvedValue({
         id: "conn-b",
       });
-      mockSyncService.syncEvent.mockResolvedValue({
-        status: "SYNCED",
-        googleEventId: "escala-evt1",
-        error: null,
-      });
 
-      await service.syncEventToGoogle("user-b", "evt-1", userFromChurchB);
+      await service.syncEventToGoogle("evt-1", userFromChurchB);
 
       expect(mockAuditLogsService.log).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -3090,37 +3052,31 @@ describe("EventsService — Google Calendar Sync", () => {
       prismaMock.googleCalendarConnection.findUnique.mockResolvedValue({
         id: "conn-1",
       });
-      mockSyncService.syncEvent.mockResolvedValue({
-        status: "SYNCED",
-        googleEventId: "escala-evt1",
-        error: null,
-      });
 
-      const result = await service.syncEventToGoogle(
-        "user-1",
+      await service.syncEventToGoogle(
         "evt-1",
         adminUser,
       );
 
       const auditCall = mockAuditLogsService.log.mock.calls[0][0];
       expect(auditCall.newValue).toEqual({
-        status: result.status,
-        googleEventId: result.googleEventId,
+        schedulesCount: 0,
       });
     });
 
     it("should include correct newValue structure for unlink audit", async () => {
       prismaMock.event.findFirst.mockResolvedValue({
         id: "evt-1",
+        churchId: "church-1",
         googleEventId: "escala-evt1",
         googleSyncStatus: "SYNCED",
       });
-      mockSyncService.deleteGoogleEvent.mockResolvedValue({
+      mockSyncService.unlinkAllEventSchedules.mockResolvedValue({
         success: true,
-        error: null,
+        errors: [],
       });
 
-      await service.unlinkEventFromGoogle("user-1", "evt-1", adminUser);
+      await service.unlinkEventFromGoogle("evt-1", adminUser);
 
       const auditCall = mockAuditLogsService.log.mock.calls[0][0];
       expect(auditCall.newValue).toEqual({ success: true });
@@ -3166,7 +3122,7 @@ describe("EventsService — Google Calendar Sync", () => {
       );
 
       expect(result).toHaveProperty("id", "evt-auto-1");
-      expect(mockSyncService.syncEvent).not.toHaveBeenCalled();
+      expect(mockSyncService.syncAllEventSchedules).toHaveBeenCalledWith("evt-auto-1");
     });
 
     it("2. should sync to Google on create when connected", async () => {
@@ -3176,11 +3132,6 @@ describe("EventsService — Google Calendar Sync", () => {
         id: "conn-1",
       });
       prismaMock.event.findFirst.mockResolvedValue(eventWithGoogleFields);
-      mockSyncService.syncEvent.mockResolvedValue({
-        status: "SYNCED",
-        googleEventId: "escala-evt1",
-        error: null,
-      });
       prismaMock.event.findUnique.mockResolvedValue({
         ...eventWithGoogleFields,
         googleEventId: "escala-evt1",
@@ -3198,15 +3149,7 @@ describe("EventsService — Google Calendar Sync", () => {
       );
 
       expect(result).toHaveProperty("googleEventId", "escala-evt1");
-      expect(mockSyncService.syncEvent).toHaveBeenCalledWith("user-1", {
-        eventId: "evt-auto-1",
-        churchId: "church-1",
-        nome: "Culto",
-        descricao: "desc",
-        dataInicio: expect.any(Date),
-        dataFim: expect.any(Date),
-        recurrenceGroupId: null,
-      });
+      expect(mockSyncService.syncAllEventSchedules).toHaveBeenCalled();
     });
 
     it("3. should return ERROR when Google sync fails on create", async () => {
@@ -3216,11 +3159,6 @@ describe("EventsService — Google Calendar Sync", () => {
         id: "conn-1",
       });
       prismaMock.event.findFirst.mockResolvedValue(eventWithGoogleFields);
-      mockSyncService.syncEvent.mockResolvedValue({
-        status: "ERROR",
-        googleEventId: null,
-        error: "Token expired",
-      });
       prismaMock.event.findUnique.mockResolvedValue({
         ...eventWithGoogleFields,
         googleSyncStatus: "ERROR",
@@ -3247,7 +3185,7 @@ describe("EventsService — Google Calendar Sync", () => {
         id: "conn-1",
       });
       prismaMock.event.findFirst.mockResolvedValue(eventWithGoogleFields);
-      mockSyncService.syncEvent.mockRejectedValue(new Error("Network error"));
+      mockSyncService.syncAllEventSchedules.mockRejectedValue(new Error("Network error"));
       prismaMock.event.findUnique.mockResolvedValue(eventWithGoogleFields);
 
       const result = await service.create(
@@ -3301,11 +3239,6 @@ describe("EventsService — Google Calendar Sync", () => {
         .mockResolvedValueOnce(seriesEvents[1])
         .mockResolvedValueOnce(seriesEvents[2])
         .mockResolvedValueOnce(seriesEvents[3]);
-      mockSyncService.syncEvent
-        .mockResolvedValueOnce({ status: "SYNCED", googleEventId: "g-1", error: null })
-        .mockRejectedValueOnce(new Error("Network error"))
-        .mockResolvedValueOnce({ status: "SYNCED", googleEventId: "g-3", error: null })
-        .mockResolvedValueOnce({ status: "SYNCED", googleEventId: "g-4", error: null });
 
       const result = (await service.create(
         {
@@ -3325,7 +3258,7 @@ describe("EventsService — Google Calendar Sync", () => {
 
       expect(result.totalEvents).toBe(4);
       expect(result.events).toHaveLength(4);
-      expect(mockSyncService.syncEvent).toHaveBeenCalledTimes(4);
+      expect(mockSyncService.syncAllEventSchedules).toHaveBeenCalled();
     });
   });
 
@@ -3356,11 +3289,6 @@ describe("EventsService — Google Calendar Sync", () => {
       prismaMock.googleCalendarConnection.findUnique.mockResolvedValue({
         id: "conn-1",
       });
-      mockSyncService.syncEvent.mockResolvedValue({
-        status: "SYNCED",
-        googleEventId: "escala-evt1",
-        error: null,
-      });
       prismaMock.event.findUnique.mockResolvedValue({
         ...updatedEvent,
         googleEventId: "escala-evt1",
@@ -3376,15 +3304,7 @@ describe("EventsService — Google Calendar Sync", () => {
       );
 
       expect(result).toHaveProperty("googleEventId", "escala-evt1");
-      expect(mockSyncService.syncEvent).toHaveBeenCalledWith("user-1", {
-        eventId: "evt-upd-1",
-        churchId: "church-1",
-        nome: "Atualizado",
-        descricao: "desc",
-        dataInicio: expect.any(Date),
-        dataFim: expect.any(Date),
-        recurrenceGroupId: null,
-      });
+      expect(mockSyncService.syncAllEventSchedules).toHaveBeenCalled();
     });
 
     it("11. should return ERROR when Google sync fails on update", async () => {
@@ -3406,11 +3326,6 @@ describe("EventsService — Google Calendar Sync", () => {
       });
       prismaMock.googleCalendarConnection.findUnique.mockResolvedValue({
         id: "conn-1",
-      });
-      mockSyncService.syncEvent.mockResolvedValue({
-        status: "ERROR",
-        googleEventId: null,
-        error: "API error",
       });
       prismaMock.event.findUnique.mockResolvedValue({
         ...existing,
@@ -3462,7 +3377,7 @@ describe("EventsService — Google Calendar Sync", () => {
       );
 
       expect(result).toHaveProperty("nome", "Atualizado");
-      expect(mockSyncService.syncEvent).not.toHaveBeenCalled();
+      expect(mockSyncService.syncAllEventSchedules).toHaveBeenCalledWith("evt-upd-3");
     });
   });
 
@@ -3524,18 +3439,11 @@ describe("EventsService — Google Calendar Sync", () => {
         lastSyncedAt: new Date(),
         googleSyncError: null,
       });
-      mockSyncService.deleteGoogleEventByGoogleId.mockResolvedValue({
-        success: true,
-        error: null,
-      });
 
       const result = await service.remove("evt-del-2", adminUser);
 
       expect(result).toHaveProperty("id", "evt-del-2");
-      expect(mockSyncService.deleteGoogleEventByGoogleId).toHaveBeenCalledWith(
-        "user-1",
-        "escala-evt2",
-      );
+      expect(mockSyncService.unlinkAllEventSchedules).toHaveBeenCalledWith("evt-del-2");
     });
 
     it("18. should keep local delete when Google deletion fails", async () => {
@@ -3626,17 +3534,9 @@ describe("EventsService — Google Calendar Sync", () => {
       googleSyncError: null,
     };
 
-    it("24. should use actor.sub for Google connection lookup", async () => {
+    it("24. should call syncAllEventSchedules with event id on auto-sync", async () => {
       prismaMock.event.findMany.mockResolvedValue([]);
       prismaMock.event.create.mockResolvedValue(secEvent);
-      prismaMock.googleCalendarConnection.findUnique.mockResolvedValue({
-        id: "conn-1",
-      });
-      mockSyncService.syncEvent.mockResolvedValue({
-        status: "SYNCED",
-        googleEventId: "escala-evt1",
-        error: null,
-      });
       prismaMock.event.findUnique.mockResolvedValue({
         ...secEvent,
         googleEventId: "escala-evt1",
@@ -3653,12 +3553,7 @@ describe("EventsService — Google Calendar Sync", () => {
         adminUser,
       );
 
-      expect(
-        prismaMock.googleCalendarConnection.findUnique,
-      ).toHaveBeenCalledWith({
-        where: { userId: "user-1" },
-        select: { id: true },
-      });
+      expect(mockSyncService.syncAllEventSchedules).toHaveBeenCalledWith("evt-sec-1");
     });
 
     it("25. should not log AuditLog on auto-sync (only manual endpoints)", async () => {
@@ -3666,11 +3561,6 @@ describe("EventsService — Google Calendar Sync", () => {
       prismaMock.event.create.mockResolvedValue(secEvent);
       prismaMock.googleCalendarConnection.findUnique.mockResolvedValue({
         id: "conn-1",
-      });
-      mockSyncService.syncEvent.mockResolvedValue({
-        status: "SYNCED",
-        googleEventId: "escala-evt1",
-        error: null,
       });
       prismaMock.event.findUnique.mockResolvedValue({
         ...secEvent,

@@ -25,7 +25,7 @@ export function GoogleCallbackHandler() {
     window.history.replaceState({}, "", cleanUrl);
 
     if (location.pathname === "/") {
-      navigate("/igreja/configuracoes", { replace: true });
+      navigate("/meu-perfil", { replace: true });
     }
   }, [location.search, location.pathname, navigate, success, toastError]);
 

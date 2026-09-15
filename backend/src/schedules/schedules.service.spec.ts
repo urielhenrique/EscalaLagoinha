@@ -5,6 +5,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { AvailabilityService } from "../availability/availability.service";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
+import { GoogleCalendarSyncService } from "../integrations/google-calendar/google-calendar-sync.service";
 import { JwtPayload } from "../auth/strategies/jwt.strategy";
 import { Perfil } from "@prisma/client";
 
@@ -79,6 +80,13 @@ describe("SchedulesService — Multi-Tenancy", () => {
         {
           provide: AuditLogsService,
           useValue: { log: jest.fn() },
+        },
+        {
+          provide: GoogleCalendarSyncService,
+          useValue: {
+            syncSchedule: jest.fn().mockResolvedValue({ status: "SYNCED", googleEventId: null, error: null }),
+            deleteGoogleEvent: jest.fn().mockResolvedValue({ success: true, error: null }),
+          },
         },
       ],
     }).compile();

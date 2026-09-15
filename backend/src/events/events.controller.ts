@@ -113,7 +113,7 @@ export class EventsController {
     @Param("id", new ParseUUIDPipe()) id: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.eventsService.syncEventToGoogle(user.sub, id, user);
+    return this.eventsService.syncEventToGoogle(id, user);
   }
 
   @Delete(":id/sync-google")
@@ -125,6 +125,17 @@ export class EventsController {
     @Param("id", new ParseUUIDPipe()) id: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.eventsService.unlinkEventFromGoogle(user.sub, id, user);
+    return this.eventsService.unlinkEventFromGoogle(id, user);
+  }
+
+  @Get(":id/google-sync-status")
+  @Roles(Perfil.VOLUNTARIO, Perfil.LEADER, Perfil.ADMIN)
+  @ApiOperation({ summary: "Status de sincronização do evento com Google Calendar" })
+  @ApiOkResponse({ description: "Status retornado com sucesso." })
+  @ResponseMessage("Status de sincronização retornado com sucesso.")
+  getGoogleSyncStatus(
+    @Param("id", new ParseUUIDPipe()) id: string,
+  ) {
+    return this.eventsService.getGoogleSyncStatus(id);
   }
 }

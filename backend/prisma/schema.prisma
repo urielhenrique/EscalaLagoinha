@@ -153,6 +153,7 @@ model User {
   auditLogs         AuditLog[]
   feedbacks         UserFeedback[]
   googleCalendarConnection GoogleCalendarConnection?
+  eventSyncs     GoogleCalendarEventSync[]
   createdAt         DateTime   @default(now())
 
   @@index([churchId])
@@ -172,6 +173,27 @@ model GoogleCalendarConnection {
   updatedAt       DateTime @updatedAt
 
   @@index([userId])
+}
+
+model GoogleCalendarEventSync {
+  id           String   @id @default(uuid())
+  scheduleId   String
+  schedule     Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId      String
+  event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  googleEventId String?
+  syncStatus   GoogleSyncStatus @default(NONE)
+  lastSyncedAt DateTime?
+  syncError    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([scheduleId])
+  @@index([scheduleId])
+  @@index([userId])
+  @@index([eventId])
 }
 
 model Ministry {
@@ -217,6 +239,7 @@ model Event {
   lastSyncedAt     DateTime?
   googleSyncError  String?
   schedules        Schedule[]
+  eventSyncs       GoogleCalendarEventSync[]
   createdAt        DateTime        @default(now())
 
   @@index([churchId])
@@ -240,6 +263,7 @@ model Schedule {
   requestedSwaps SwapRequest[] @relation("RequesterShift")
   receivedSwaps  SwapRequest[] @relation("RequestedShift")
   attendance AttendanceRecord?
+  googleCalendarSyncs GoogleCalendarEventSync[]
 
   @@index([eventId])
   @@index([ministryId])

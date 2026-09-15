@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, PencilLine, Plus, ShieldAlert, Trash2 } from "lucide-react";
+import { AlertTriangle, CalendarCheck2, CalendarX2, LoaderCircle, PencilLine, Plus, ShieldAlert, Trash2 } from "lucide-react";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Modal } from "../components/ui/Modal";
 import { PaginationControls } from "../components/ui/PaginationControls";
@@ -9,10 +9,13 @@ import { useAuth } from "../hooks/useAuth";
 import {
   createEvent,
   deleteEvent,
+  getEventSyncStatus,
   listEvents,
   seedDefaultEvents,
   updateEvent,
+  unlinkEventFromGoogle,
 } from "../services/eventsApi";
+import { getGoogleCalendarStatus, type GoogleCalendarStatus } from "../services/googleCalendarApi";
 import { getErrorMessage } from "../services/api";
 import type {
   EventItem,
@@ -117,6 +120,55 @@ export function EventsPage() {
   const [seriesEvent, setSeriesEvent] = useState<EventItem | null>(null);
   const [seriesRefreshKey, setSeriesRefreshKey] = useState(0);
 
+  const [googleStatus, setGoogleStatus] = useState<GoogleCalendarStatus | null>(null);
+  const [syncingEvents, setSyncingEvents] = useState<Set<string>>(new Set());
+  const [eventSyncStatuses, setEventSyncStatuses] = useState<Map<string, { syncedCount: number; totalCount: number }>>(new Map());
+
+  const loadGoogleStatus = async () => {
+    try {
+      const response = await getGoogleCalendarStatus();
+      setGoogleStatus(response.data);
+    } catch {
+      setGoogleStatus(null);
+    }
+  };
+
+  const loadEventSyncStatuses = async (eventsToFetch: EventItem[]) => {
+    const statuses = new Map<string, { syncedCount: number; totalCount: number }>();
+    for (const event of eventsToFetch) {
+      try {
+        const response = await getEventSyncStatus(event.id);
+        const data = response.data;
+        if (data?.schedules) {
+          const syncedCount = data.schedules.filter((s) => s.synced).length;
+          statuses.set(event.id, { syncedCount, totalCount: data.schedules.length });
+        }
+      } catch {
+        // ignore per-event errors
+      }
+    }
+    setEventSyncStatuses(statuses);
+  };
+
+  const handleUnlinkGoogle = async (eventId: string) => {
+    setSyncingEvents((prev) => new Set(prev).add(eventId));
+    try {
+      await unlinkEventFromGoogle(eventId);
+      setSuccess("Evento desvinculado do Google Calendar.");
+      if (googleStatus?.connected) {
+        await loadEventSyncStatuses(events);
+      }
+    } catch (err) {
+      setError(getErrorMessage(err, "Falha ao desvincular do Google Calendar."));
+    } finally {
+      setSyncingEvents((prev) => {
+        const next = new Set(prev);
+        next.delete(eventId);
+        return next;
+      });
+    }
+  };
+
   const loadEvents = async () => {
     setIsLoading(true);
     setError(null);
@@ -135,7 +187,14 @@ export function EventsPage() {
 
   useEffect(() => {
     void loadEvents();
+    void loadGoogleStatus();
   }, []);
+
+  useEffect(() => {
+    if (googleStatus?.connected && events.length > 0) {
+      void loadEventSyncStatuses(events);
+    }
+  }, [googleStatus?.connected, events]);
 
   const filteredEvents = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -658,6 +717,42 @@ export function EventsPage() {
                   </dd>
                 </div>
               </dl>
+
+              {googleStatus?.connected ? (
+                <div className="mt-3 flex items-center gap-2">
+                  {syncingEvents.has(event.id) ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin text-app-300" />
+                  ) : (() => {
+                    const syncInfo = eventSyncStatuses.get(event.id);
+                    if (syncInfo && syncInfo.totalCount > 0) {
+                      return syncInfo.syncedCount === syncInfo.totalCount ? (
+                        <CalendarCheck2 className="h-4 w-4 text-emerald-400" />
+                      ) : (
+                        <CalendarCheck2 className="h-4 w-4 text-yellow-400" />
+                      );
+                    }
+                    return <CalendarCheck2 className="h-4 w-4 text-app-400" />;
+                  })()}
+                  <span className="text-xs text-app-300">
+                    {(() => {
+                      const syncInfo = eventSyncStatuses.get(event.id);
+                      if (syncInfo && syncInfo.totalCount > 0) {
+                        return `Google Calendar: ${syncInfo.syncedCount}/${syncInfo.totalCount} escalas`;
+                      }
+                      return "Google Calendar conectado";
+                    })()}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleUnlinkGoogle(event.id)}
+                    disabled={syncingEvents.has(event.id)}
+                    className="ml-auto inline-flex items-center gap-1 rounded-lg border border-rose-400/30 bg-rose-500/10 px-2 py-1 text-xs font-medium text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-60"
+                  >
+                    <CalendarX2 className="h-3 w-3" />
+                    Desvincular
+                  </button>
+                </div>
+              ) : googleStatus?.connected === false ? null : null}
             </article>
           ))}
         </div>

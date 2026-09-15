@@ -7,16 +7,6 @@ import { GoogleCalendarService } from "./google-calendar.service";
 const BRAZIL_TIMEZONE = "America/Sao_Paulo";
 const EXTENDED_PROPERTY_SOURCE = "escala-facil";
 
-interface SyncEventInput {
-  eventId: string;
-  churchId: string | null;
-  nome: string;
-  descricao: string | null;
-  dataInicio: Date;
-  dataFim: Date;
-  recurrenceGroupId: string | null;
-}
-
 interface SyncResult {
   status: GoogleSyncStatus;
   googleEventId: string | null;
@@ -32,8 +22,8 @@ export class GoogleCalendarSyncService {
     private readonly googleCalendarService: GoogleCalendarService,
   ) {}
 
-  buildGoogleEventId(eventId: string): string {
-    const normalized = eventId.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+  buildGoogleEventId(scheduleId: string): string {
+    const normalized = scheduleId.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
     return `escala-${normalized}`;
   }
 
@@ -55,49 +45,101 @@ export class GoogleCalendarSyncService {
     return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;
   }
 
-  async syncEvent(
-    userId: string,
-    input: SyncEventInput,
-  ): Promise<SyncResult> {
+  async syncSchedule(scheduleId: string): Promise<SyncResult> {
     try {
+      const schedule = await this.prisma.schedule.findUnique({
+        where: { id: scheduleId },
+        select: {
+          id: true,
+          volunteerId: true,
+          eventId: true,
+          status: true,
+          event: {
+            select: {
+              id: true,
+              churchId: true,
+              nome: true,
+              descricao: true,
+              dataInicio: true,
+              dataFim: true,
+              recurrenceGroupId: true,
+            },
+          },
+        },
+      });
+
+      if (!schedule) {
+        return {
+          status: GoogleSyncStatus.ERROR,
+          googleEventId: null,
+          error: "Escala não encontrada.",
+        };
+      }
+
+      if (schedule.status === "CANCELADO") {
+        return {
+          status: GoogleSyncStatus.NONE,
+          googleEventId: null,
+          error: null,
+        };
+      }
+
+      const userId = schedule.volunteerId;
+
       const connection =
         await this.prisma.googleCalendarConnection.findUnique({
           where: { userId },
           select: { calendarId: true },
         });
 
-      const calendarId = connection?.calendarId || "primary";
+      if (!connection) {
+        return {
+          status: GoogleSyncStatus.NONE,
+          googleEventId: null,
+          error: null,
+        };
+      }
 
-      const existingEvent =
-        await this.prisma.event.findUnique({
-          where: { id: input.eventId },
-          select: { googleEventId: true, googleSyncStatus: true },
+      const calendarId = connection.calendarId || "primary";
+
+      const existingSync =
+        await this.prisma.googleCalendarEventSync.findUnique({
+          where: { scheduleId },
+          select: { googleEventId: true, syncStatus: true },
         });
 
       if (
-        existingEvent?.googleSyncStatus === GoogleSyncStatus.SYNCED &&
-        existingEvent.googleEventId
+        existingSync?.syncStatus === GoogleSyncStatus.SYNCED &&
+        existingSync.googleEventId
       ) {
         return await this.retryWithRefresh(userId, (accessToken) =>
           this.updateGoogleEvent(
             accessToken,
             calendarId,
-            input,
-            existingEvent.googleEventId!,
+            schedule.event,
+            existingSync.googleEventId!,
+            scheduleId,
+            userId,
           ),
         );
       }
 
       return await this.retryWithRefresh(userId, (accessToken) =>
-        this.createGoogleEvent(accessToken, calendarId, input),
+        this.createGoogleEvent(
+          accessToken,
+          calendarId,
+          schedule.event,
+          scheduleId,
+          userId,
+        ),
       );
     } catch (error) {
       const errorMsg =
         error instanceof Error ? error.message : "Erro desconhecido";
       this.logger.error(
-        `Sync failed for event ${input.eventId}: ${errorMsg}`,
+        `Sync failed for schedule ${scheduleId}: ${errorMsg}`,
       );
-      await this.updateEventSyncError(input.eventId, errorMsg);
+      await this.updateSyncError(scheduleId, errorMsg);
       return {
         status: GoogleSyncStatus.ERROR,
         googleEventId: null,
@@ -146,30 +188,41 @@ export class GoogleCalendarSyncService {
   private async createGoogleEvent(
     accessToken: string,
     calendarId: string,
-    input: SyncEventInput,
+    event: {
+      id: string;
+      churchId: string | null;
+      nome: string;
+      descricao: string | null;
+      dataInicio: Date;
+      dataFim: Date;
+      recurrenceGroupId: string | null;
+    },
+    scheduleId: string,
+    userId: string,
   ): Promise<SyncResult> {
     const calendar = this.getCalendarClient(accessToken);
 
-    const googleEventId = this.buildGoogleEventId(input.eventId);
+    const googleEventId = this.buildGoogleEventId(scheduleId);
 
     const eventBody: calendar_v3.Schema$Event = {
       id: googleEventId,
-      summary: input.nome,
-      description: input.descricao || undefined,
+      summary: event.nome,
+      description: event.descricao || undefined,
       start: {
-        dateTime: this.toGoogleDateTime(input.dataInicio),
+        dateTime: this.toGoogleDateTime(event.dataInicio),
         timeZone: BRAZIL_TIMEZONE,
       },
       end: {
-        dateTime: this.toGoogleDateTime(input.dataFim),
+        dateTime: this.toGoogleDateTime(event.dataFim),
         timeZone: BRAZIL_TIMEZONE,
       },
       extendedProperties: {
         private: {
           [EXTENDED_PROPERTY_SOURCE]: "true",
-          eventId: input.eventId,
-          churchId: input.churchId || "",
-          recurrenceGroupId: input.recurrenceGroupId || "",
+          eventId: event.id,
+          scheduleId,
+          churchId: event.churchId || "",
+          recurrenceGroupId: event.recurrenceGroupId || "",
         },
       },
     };
@@ -182,18 +235,26 @@ export class GoogleCalendarSyncService {
 
     const createdGoogleId = response.data.id || googleEventId;
 
-    await this.prisma.event.update({
-      where: { id: input.eventId },
-      data: {
+    await this.prisma.googleCalendarEventSync.upsert({
+      where: { scheduleId },
+      update: {
         googleEventId: createdGoogleId,
-        googleSyncStatus: GoogleSyncStatus.SYNCED,
+        syncStatus: GoogleSyncStatus.SYNCED,
         lastSyncedAt: new Date(),
-        googleSyncError: null,
+        syncError: null,
+      },
+      create: {
+        scheduleId,
+        userId,
+        eventId: event.id,
+        googleEventId: createdGoogleId,
+        syncStatus: GoogleSyncStatus.SYNCED,
+        lastSyncedAt: new Date(),
       },
     });
 
     this.logger.log(
-      `Event ${input.eventId} created in Google Calendar as ${createdGoogleId}.`,
+      `Schedule ${scheduleId} synced to Google Calendar for user ${userId} as ${createdGoogleId}.`,
     );
 
     return {
@@ -206,28 +267,39 @@ export class GoogleCalendarSyncService {
   private async updateGoogleEvent(
     accessToken: string,
     calendarId: string,
-    input: SyncEventInput,
+    event: {
+      id: string;
+      churchId: string | null;
+      nome: string;
+      descricao: string | null;
+      dataInicio: Date;
+      dataFim: Date;
+      recurrenceGroupId: string | null;
+    },
     existingGoogleEventId: string,
+    scheduleId: string,
+    userId: string,
   ): Promise<SyncResult> {
     const calendar = this.getCalendarClient(accessToken);
 
     const eventBody: calendar_v3.Schema$Event = {
-      summary: input.nome,
-      description: input.descricao || undefined,
+      summary: event.nome,
+      description: event.descricao || undefined,
       start: {
-        dateTime: this.toGoogleDateTime(input.dataInicio),
+        dateTime: this.toGoogleDateTime(event.dataInicio),
         timeZone: BRAZIL_TIMEZONE,
       },
       end: {
-        dateTime: this.toGoogleDateTime(input.dataFim),
+        dateTime: this.toGoogleDateTime(event.dataFim),
         timeZone: BRAZIL_TIMEZONE,
       },
       extendedProperties: {
         private: {
           [EXTENDED_PROPERTY_SOURCE]: "true",
-          eventId: input.eventId,
-          churchId: input.churchId || "",
-          recurrenceGroupId: input.recurrenceGroupId || "",
+          eventId: event.id,
+          scheduleId,
+          churchId: event.churchId || "",
+          recurrenceGroupId: event.recurrenceGroupId || "",
         },
       },
     };
@@ -239,17 +311,25 @@ export class GoogleCalendarSyncService {
         requestBody: eventBody,
       });
 
-      await this.prisma.event.update({
-        where: { id: input.eventId },
-        data: {
-          googleSyncStatus: GoogleSyncStatus.SYNCED,
+      await this.prisma.googleCalendarEventSync.upsert({
+        where: { scheduleId },
+        update: {
+          syncStatus: GoogleSyncStatus.SYNCED,
           lastSyncedAt: new Date(),
-          googleSyncError: null,
+          syncError: null,
+        },
+        create: {
+          scheduleId,
+          userId,
+          eventId: event.id,
+          googleEventId: existingGoogleEventId,
+          syncStatus: GoogleSyncStatus.SYNCED,
+          lastSyncedAt: new Date(),
         },
       });
 
       this.logger.log(
-        `Event ${input.eventId} updated in Google Calendar (${existingGoogleEventId}).`,
+        `Schedule ${scheduleId} updated in Google Calendar for user ${userId} (${existingGoogleEventId}).`,
       );
 
       return {
@@ -261,37 +341,37 @@ export class GoogleCalendarSyncService {
       const status = this.getHttpStatus(error);
       if (status === 404) {
         this.logger.warn(
-          `Google event ${existingGoogleEventId} not found (404). Recreating.`,
+          `Google event ${existingGoogleEventId} not found (404). Recreating for schedule ${scheduleId}.`,
         );
-        await this.prisma.event.update({
-          where: { id: input.eventId },
-          data: {
-            googleEventId: null,
-            googleSyncStatus: GoogleSyncStatus.NONE,
-            lastSyncedAt: null,
-            googleSyncError: null,
-          },
+        await this.prisma.googleCalendarEventSync.deleteMany({
+          where: { scheduleId },
         });
-        return this.createGoogleEvent(accessToken, calendarId, input);
+        return this.createGoogleEvent(
+          accessToken,
+          calendarId,
+          event,
+          scheduleId,
+          userId,
+        );
       }
       throw error;
     }
   }
 
   async deleteGoogleEvent(
-    userId: string,
-    eventId: string,
+    scheduleId: string,
   ): Promise<{ success: boolean; error: string | null }> {
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
-      select: { googleEventId: true, googleSyncStatus: true },
+    const sync = await this.prisma.googleCalendarEventSync.findUnique({
+      where: { scheduleId },
+      select: { googleEventId: true, userId: true },
     });
 
-    if (!event?.googleEventId) {
+    if (!sync?.googleEventId) {
       return { success: true, error: null };
     }
 
-    const googleEventId = event.googleEventId;
+    const googleEventId = sync.googleEventId;
+    const userId = sync.userId;
 
     try {
       await this.retryWithRefresh(userId, async (accessToken) => {
@@ -318,24 +398,18 @@ export class GoogleCalendarSyncService {
         const errorMsg =
           error instanceof Error ? error.message : "Erro desconhecido";
         this.logger.error(
-          `Failed to delete Google event for ${eventId}: ${errorMsg}`,
+          `Failed to delete Google event for schedule ${scheduleId}: ${errorMsg}`,
         );
         return { success: false, error: errorMsg };
       }
     }
 
-    await this.prisma.event.update({
-      where: { id: eventId },
-      data: {
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-        lastSyncedAt: null,
-        googleSyncError: null,
-      },
+    await this.prisma.googleCalendarEventSync.deleteMany({
+      where: { scheduleId },
     });
 
     this.logger.log(
-      `Event ${eventId} unlinked from Google Calendar (${googleEventId}).`,
+      `Schedule ${scheduleId} unlinked from Google Calendar (${googleEventId}).`,
     );
 
     return { success: true, error: null };
@@ -379,21 +453,153 @@ export class GoogleCalendarSyncService {
     return { success: true, error: null };
   }
 
-  private async updateEventSyncError(
+  async getScheduleSyncStatus(
+    scheduleId: string,
+  ): Promise<{
+    synced: boolean;
+    googleEventId: string | null;
+    status: GoogleSyncStatus;
+    lastSyncedAt: Date | null;
+    error: string | null;
+  }> {
+    const sync = await this.prisma.googleCalendarEventSync.findUnique({
+      where: { scheduleId },
+      select: {
+        googleEventId: true,
+        syncStatus: true,
+        lastSyncedAt: true,
+        syncError: true,
+      },
+    });
+
+    if (!sync) {
+      return {
+        synced: false,
+        googleEventId: null,
+        status: GoogleSyncStatus.NONE,
+        lastSyncedAt: null,
+        error: null,
+      };
+    }
+
+    return {
+      synced: sync.syncStatus === GoogleSyncStatus.SYNCED,
+      googleEventId: sync.googleEventId,
+      status: sync.syncStatus,
+      lastSyncedAt: sync.lastSyncedAt,
+      error: sync.syncError,
+    };
+  }
+
+  async getEventSyncStatuses(
     eventId: string,
+  ): Promise<
+    Array<{
+      scheduleId: string;
+      userId: string;
+      synced: boolean;
+      googleEventId: string | null;
+      status: GoogleSyncStatus;
+    }>
+  > {
+    const syncs = await this.prisma.googleCalendarEventSync.findMany({
+      where: { eventId },
+      select: {
+        scheduleId: true,
+        userId: true,
+        googleEventId: true,
+        syncStatus: true,
+      },
+    });
+
+    return syncs.map((sync) => ({
+      scheduleId: sync.scheduleId,
+      userId: sync.userId,
+      synced: sync.syncStatus === GoogleSyncStatus.SYNCED,
+      googleEventId: sync.googleEventId,
+      status: sync.syncStatus,
+    }));
+  }
+
+  async syncAllEventSchedules(eventId: string): Promise<void> {
+    const schedules = await this.prisma.schedule.findMany({
+      where: { eventId, status: { not: "CANCELADO" } },
+      select: { id: true },
+    });
+
+    for (const schedule of schedules) {
+      await this.syncSchedule(schedule.id);
+    }
+  }
+
+  async unlinkAllEventSchedules(
+    eventId: string,
+  ): Promise<{ success: boolean; errors: string[] }> {
+    const syncs = await this.prisma.googleCalendarEventSync.findMany({
+      where: { eventId },
+      select: { scheduleId: true, googleEventId: true, userId: true },
+    });
+
+    const errors: string[] = [];
+
+    for (const sync of syncs) {
+      if (sync.googleEventId) {
+        const result = await this.deleteGoogleEventByGoogleId(
+          sync.userId,
+          sync.googleEventId,
+        );
+        if (!result.success && result.error) {
+          errors.push(`Schedule ${sync.scheduleId}: ${result.error}`);
+        }
+      }
+    }
+
+    await this.prisma.googleCalendarEventSync.deleteMany({
+      where: { eventId },
+    });
+
+    return { success: errors.length === 0, errors };
+  }
+
+  private async updateSyncError(
+    scheduleId: string,
     error: string,
   ): Promise<void> {
     try {
-      await this.prisma.event.update({
-        where: { id: eventId },
-        data: {
-          googleSyncStatus: GoogleSyncStatus.ERROR,
-          googleSyncError: error,
-        },
+      const existing = await this.prisma.googleCalendarEventSync.findUnique({
+        where: { scheduleId },
+        select: { userId: true, eventId: true },
       });
+
+      if (existing) {
+        await this.prisma.googleCalendarEventSync.update({
+          where: { scheduleId },
+          data: {
+            syncStatus: GoogleSyncStatus.ERROR,
+            syncError: error,
+          },
+        });
+      } else {
+        const schedule = await this.prisma.schedule.findUnique({
+          where: { id: scheduleId },
+          select: { volunteerId: true, eventId: true },
+        });
+
+        if (schedule) {
+          await this.prisma.googleCalendarEventSync.create({
+            data: {
+              scheduleId,
+              userId: schedule.volunteerId,
+              eventId: schedule.eventId,
+              syncStatus: GoogleSyncStatus.ERROR,
+              syncError: error,
+            },
+          });
+        }
+      }
     } catch (updateError) {
       this.logger.error(
-        `Failed to update sync error for event ${eventId}: ${updateError instanceof Error ? updateError.message : "unknown"}`,
+        `Failed to update sync error for schedule ${scheduleId}: ${updateError instanceof Error ? updateError.message : "unknown"}`,
       );
     }
   }

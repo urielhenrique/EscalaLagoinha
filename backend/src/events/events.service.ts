@@ -10,7 +10,6 @@ import { JwtPayload } from "../auth/strategies/jwt.strategy";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
 import { GoogleCalendarSyncService } from "../integrations/google-calendar/google-calendar-sync.service";
-import { GoogleCalendarService } from "../integrations/google-calendar/google-calendar.service";
 import {
   CreateEventDto,
   RecurrenceConfigDto,
@@ -58,7 +57,6 @@ export class EventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly googleCalendarSyncService: GoogleCalendarSyncService,
-    private readonly googleCalendarService: GoogleCalendarService,
     private readonly auditLogsService: AuditLogsService,
   ) {}
 
@@ -190,67 +188,26 @@ export class EventsService {
     return occurrences;
   }
 
-  private async autoSyncToGoogle(
+  private async autoSyncAllEventSchedules(
     eventId: string,
-    actor: JwtPayload,
   ): Promise<void> {
     try {
-      const connection =
-        await this.prisma.googleCalendarConnection.findUnique({
-          where: { userId: actor.sub },
-          select: { id: true },
-        });
-
-      if (!connection) {
-        return;
-      }
-
-      const event = await this.prisma.event.findFirst({
-        where: { id: eventId, churchId: actor.churchId! },
-        select: {
-          id: true,
-          churchId: true,
-          nome: true,
-          descricao: true,
-          dataInicio: true,
-          dataFim: true,
-          recurrenceGroupId: true,
-        },
-      });
-
-      if (!event) {
-        return;
-      }
-
-      await this.googleCalendarSyncService.syncEvent(actor.sub, {
-        eventId: event.id,
-        churchId: event.churchId,
-        nome: event.nome,
-        descricao: event.descricao,
-        dataInicio: event.dataInicio,
-        dataFim: event.dataFim,
-        recurrenceGroupId: event.recurrenceGroupId,
-      });
+      await this.googleCalendarSyncService.syncAllEventSchedules(eventId);
     } catch (error) {
       this.logger.error(
-        `Auto-sync failed for event ${eventId}: ${error instanceof Error ? error.message : "unknown"}`,
+        `Auto-sync all schedules failed for event ${eventId}: ${error instanceof Error ? error.message : "unknown"}`,
       );
     }
   }
 
-  private async autoUnlinkFromGoogle(
+  private async autoUnlinkAllEventSchedules(
     eventId: string,
-    googleEventId: string,
-    actor: JwtPayload,
   ): Promise<void> {
     try {
-      await this.googleCalendarSyncService.deleteGoogleEventByGoogleId(
-        actor.sub,
-        googleEventId,
-      );
+      await this.googleCalendarSyncService.unlinkAllEventSchedules(eventId);
     } catch (error) {
       this.logger.error(
-        `Auto-unlink failed for event ${eventId}: ${error instanceof Error ? error.message : "unknown"}`,
+        `Auto-unlink all schedules failed for event ${eventId}: ${error instanceof Error ? error.message : "unknown"}`,
       );
     }
   }
@@ -322,7 +279,7 @@ export class EventsService {
       });
 
       for (const event of createdEvents) {
-        await this.autoSyncToGoogle(event.id, actor);
+        await this.autoSyncAllEventSchedules(event.id);
       }
 
       const syncedEvents = await this.prisma.event.findMany({
@@ -352,7 +309,7 @@ export class EventsService {
       select: eventSelect,
     });
 
-    await this.autoSyncToGoogle(created.id, actor);
+    await this.autoSyncAllEventSchedules(created.id);
 
     return this.prisma.event.findUnique({
       where: { id: created.id },
@@ -436,7 +393,7 @@ export class EventsService {
       select: eventSelect,
     });
 
-    await this.autoSyncToGoogle(id, actor);
+    await this.autoSyncAllEventSchedules(id);
 
     return this.prisma.event.findUnique({
       where: { id },
@@ -449,24 +406,20 @@ export class EventsService {
 
     const exists = await this.prisma.event.findFirst({
       where: { id, churchId },
-      select: { id: true, googleEventId: true },
+      select: { id: true },
     });
 
     if (!exists) {
       throw new NotFoundException("Evento não encontrado.");
     }
 
-    const { googleEventId } = exists;
+    await this.autoUnlinkAllEventSchedules(id);
 
     try {
       const deleted = await this.prisma.event.delete({
         where: { id },
         select: eventSelect,
       });
-
-      if (googleEventId) {
-        await this.autoUnlinkFromGoogle(id, googleEventId, actor);
-      }
 
       return deleted;
     } catch (error) {
@@ -492,49 +445,22 @@ export class EventsService {
     }
   }
 
-  async syncEventToGoogle(userId: string, eventId: string, actor: JwtPayload) {
+  async syncEventToGoogle(eventId: string, actor: JwtPayload) {
     const churchId = this.getChurchIdOrThrow(actor);
 
     const event = await this.prisma.event.findFirst({
       where: { id: eventId, churchId },
-      select: {
-        id: true,
-        churchId: true,
-        nome: true,
-        descricao: true,
-        dataInicio: true,
-        dataFim: true,
-        recurrenceGroupId: true,
-        googleEventId: true,
-        googleSyncStatus: true,
-      },
+      select: { id: true },
     });
 
     if (!event) {
       throw new NotFoundException("Evento não encontrado.");
     }
 
-    const connection =
-      await this.prisma.googleCalendarConnection.findUnique({
-        where: { userId },
-        select: { id: true },
-      });
+    await this.googleCalendarSyncService.syncAllEventSchedules(event.id);
 
-    if (!connection) {
-      throw new BadRequestException(
-        "Google Calendar não conectado. Conecte sua conta nas configurações.",
-      );
-    }
-
-    const result = await this.googleCalendarSyncService.syncEvent(userId, {
-      eventId: event.id,
-      churchId: event.churchId,
-      nome: event.nome,
-      descricao: event.descricao,
-      dataInicio: event.dataInicio,
-      dataFim: event.dataFim,
-      recurrenceGroupId: event.recurrenceGroupId,
-    });
+    const statuses =
+      await this.googleCalendarSyncService.getEventSyncStatuses(event.id);
 
     await this.auditLogsService.log({
       userId: actor.sub,
@@ -543,44 +469,30 @@ export class EventsService {
       module: "EVENTS",
       targetId: event.id,
       newValue: {
-        status: result.status,
-        googleEventId: result.googleEventId,
+        schedulesCount: statuses.length,
       } as Prisma.InputJsonValue,
     });
 
     return {
       eventId: event.id,
-      status: result.status,
-      googleEventId: result.googleEventId,
-      lastSyncedAt: result.status === "SYNCED" ? new Date() : null,
-      googleSyncError: result.error,
+      schedules: statuses,
     };
   }
 
-  async unlinkEventFromGoogle(
-    userId: string,
-    eventId: string,
-    actor: JwtPayload,
-  ) {
+  async unlinkEventFromGoogle(eventId: string, actor: JwtPayload) {
     const churchId = this.getChurchIdOrThrow(actor);
 
     const event = await this.prisma.event.findFirst({
       where: { id: eventId, churchId },
-      select: {
-        id: true,
-        googleEventId: true,
-        googleSyncStatus: true,
-      },
+      select: { id: true },
     });
 
     if (!event) {
       throw new NotFoundException("Evento não encontrado.");
     }
 
-    const result = await this.googleCalendarSyncService.deleteGoogleEvent(
-      userId,
-      eventId,
-    );
+    const result =
+      await this.googleCalendarSyncService.unlinkAllEventSchedules(event.id);
 
     await this.auditLogsService.log({
       userId: actor.sub,
@@ -596,7 +508,16 @@ export class EventsService {
     return {
       eventId: event.id,
       success: result.success,
-      googleSyncError: result.error,
+      errors: result.errors,
+    };
+  }
+
+  async getGoogleSyncStatus(eventId: string) {
+    const statuses =
+      await this.googleCalendarSyncService.getEventSyncStatuses(eventId);
+    return {
+      eventId,
+      schedules: statuses,
     };
   }
 

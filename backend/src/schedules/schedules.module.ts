@@ -1,12 +1,18 @@
 import { Module } from "@nestjs/common";
 import { AuditLogsModule } from "../audit-logs/audit-logs.module";
 import { AvailabilityModule } from "../availability/availability.module";
+import { GoogleCalendarModule } from "../integrations/google-calendar/google-calendar.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { SchedulesController } from "./schedules.controller";
 import { SchedulesService } from "./schedules.service";
 
 @Module({
-  imports: [NotificationsModule, AvailabilityModule, AuditLogsModule],
+  imports: [
+    NotificationsModule,
+    AvailabilityModule,
+    AuditLogsModule,
+    GoogleCalendarModule,
+  ],
   controllers: [SchedulesController],
   providers: [SchedulesService],
   exports: [SchedulesService],

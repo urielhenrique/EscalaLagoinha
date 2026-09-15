@@ -13,8 +13,10 @@ import {
   ApiQuery,
 } from "@nestjs/swagger";
 import { Response } from "express";
+import { Perfil } from "@prisma/client";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { Public } from "../../auth/decorators/public.decorator";
+import { Roles } from "../../auth/decorators/roles.decorator";
 import { JwtPayload } from "../../auth/strategies/jwt.strategy";
 import { GoogleCalendarService } from "./google-calendar.service";
 import { ResponseMessage } from "../../common/decorators/response-message.decorator";
@@ -30,6 +32,7 @@ export class GoogleCalendarController {
   ) {}
 
   @Get("connect")
+  @Roles(Perfil.VOLUNTARIO, Perfil.LEADER, Perfil.ADMIN)
   @ResponseMessage("URL de autorização gerada com sucesso.")
   @ApiOperation({
     summary: "Gerar URL de autorização Google OAuth",
@@ -112,6 +115,7 @@ export class GoogleCalendarController {
   }
 
   @Get("status")
+  @Roles(Perfil.VOLUNTARIO, Perfil.LEADER, Perfil.ADMIN)
   @ResponseMessage("Status da integração Google Calendar.")
   @ApiOperation({
     summary: "Status da conexão Google Calendar",
@@ -124,6 +128,7 @@ export class GoogleCalendarController {
   }
 
   @Post("disconnect")
+  @Roles(Perfil.VOLUNTARIO, Perfil.LEADER, Perfil.ADMIN)
   @ResponseMessage("Desconectado do Google Calendar.")
   @ApiOperation({
     summary: "Desconectar Google Calendar",

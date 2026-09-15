@@ -1,6 +1,7 @@
 import { Camera, Save, UserCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { SectionHeader } from "../components/ui/SectionHeader";
+import { GoogleCalendarSection } from "../components/google/GoogleCalendarSection";
 import { useAuth } from "../hooks/useAuth";
 import { getErrorMessage } from "../services/api";
 import { updateMyProfileRequest } from "../services/authApi";
@@ -230,6 +231,8 @@ export function MyProfilePage() {
           {isSaving ? "Salvando..." : "Salvar alterações"}
         </button>
       </article>
+
+      <GoogleCalendarSection />
     </section>
   );
 }

@@ -2,6 +2,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma, ScheduleStatus } from "@prisma/client";
@@ -15,6 +16,7 @@ import {
 } from "../auth/helpers/role-helpers";
 import { JwtPayload } from "../auth/strategies/jwt.strategy";
 import { toJsonValue } from "../common/utils/json";
+import { GoogleCalendarSyncService } from "../integrations/google-calendar/google-calendar-sync.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { USER_PUBLIC_SELECT } from "../users/users.service";
@@ -56,11 +58,14 @@ const scheduleSelect = {
 
 @Injectable()
 export class SchedulesService {
+  private readonly logger = new Logger(SchedulesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
     private readonly availabilityService: AvailabilityService,
     private readonly auditLogsService: AuditLogsService,
+    private readonly googleCalendarSyncService: GoogleCalendarSyncService,
   ) {}
 
   private async assertLeaderAccess(
@@ -161,6 +166,26 @@ export class SchedulesService {
     }
   }
 
+  private async syncScheduleToGoogle(scheduleId: string): Promise<void> {
+    try {
+      await this.googleCalendarSyncService.syncSchedule(scheduleId);
+    } catch (error) {
+      this.logger.error(
+        `Google Calendar sync failed for schedule ${scheduleId}: ${error instanceof Error ? error.message : "unknown"}`,
+      );
+    }
+  }
+
+  private async unlinkScheduleFromGoogle(scheduleId: string): Promise<void> {
+    try {
+      await this.googleCalendarSyncService.deleteGoogleEvent(scheduleId);
+    } catch (error) {
+      this.logger.error(
+        `Google Calendar unlink failed for schedule ${scheduleId}: ${error instanceof Error ? error.message : "unknown"}`,
+      );
+    }
+  }
+
   async create(dto: CreateScheduleDto, actor: JwtPayload) {
     const churchId = getChurchIdOrThrow(actor);
     await this.assertLeaderAccess(actor, dto.ministryId, churchId);
@@ -214,6 +239,8 @@ export class SchedulesService {
         targetId: created.id,
         newValue: toJsonValue(created),
       });
+
+      await this.syncScheduleToGoogle(created.id);
 
       return created;
     } catch (error) {
@@ -371,6 +398,21 @@ export class SchedulesService {
         newValue: toJsonValue(updated),
       });
 
+      const volunteerChanged =
+        dto.volunteerId && dto.volunteerId !== existing.volunteerId;
+      const statusChangedToCancelled =
+        dto.status === ScheduleStatus.CANCELADO &&
+        existing.status !== ScheduleStatus.CANCELADO;
+
+      if (statusChangedToCancelled) {
+        await this.unlinkScheduleFromGoogle(id);
+      } else if (volunteerChanged) {
+        await this.unlinkScheduleFromGoogle(id);
+        await this.syncScheduleToGoogle(id);
+      } else {
+        await this.syncScheduleToGoogle(id);
+      }
+
       return updated;
     } catch (error) {
       if (
@@ -424,6 +466,8 @@ export class SchedulesService {
       oldValue: toJsonValue(exists),
       newValue: toJsonValue(cancelled),
     });
+
+    await this.unlinkScheduleFromGoogle(id);
 
     return cancelled;
   }

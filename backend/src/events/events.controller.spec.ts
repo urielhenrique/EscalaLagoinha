@@ -43,18 +43,16 @@ describe("EventsController — Google Calendar Sync", () => {
     it("should sync event to Google Calendar", async () => {
       eventsService.syncEventToGoogle.mockResolvedValue({
         eventId: "evt-1",
-        status: "SYNCED",
-        googleEventId: "escala-evt1",
-        lastSyncedAt: new Date(),
-        googleSyncError: null,
+        schedules: [
+          { scheduleId: "s1", userId: "user-1", synced: true, googleEventId: "escala-s1", status: "SYNCED" },
+        ],
       });
 
       const result = await controller.syncGoogle("evt-1", adminUser);
 
-      expect(result.status).toBe("SYNCED");
-      expect(result.googleEventId).toBe("escala-evt1");
+      expect(result.schedules[0].status).toBe("SYNCED");
+      expect(result.schedules[0].googleEventId).toBe("escala-s1");
       expect(eventsService.syncEventToGoogle).toHaveBeenCalledWith(
-        "user-1",
         "evt-1",
         adminUser,
       );
@@ -99,14 +97,13 @@ describe("EventsController — Google Calendar Sync", () => {
       eventsService.unlinkEventFromGoogle.mockResolvedValue({
         eventId: "evt-1",
         success: true,
-        googleSyncError: null,
+        errors: [],
       });
 
       const result = await controller.unlinkGoogle("evt-1", adminUser);
 
       expect(result.success).toBe(true);
       expect(eventsService.unlinkEventFromGoogle).toHaveBeenCalledWith(
-        "user-1",
         "evt-1",
         adminUser,
       );
@@ -126,7 +123,7 @@ describe("EventsController — Google Calendar Sync", () => {
       eventsService.unlinkEventFromGoogle.mockResolvedValue({
         eventId: "evt-1",
         success: true,
-        googleSyncError: null,
+        errors: [],
       });
 
       const result = await controller.unlinkGoogle("evt-1", adminUser);
@@ -138,13 +135,13 @@ describe("EventsController — Google Calendar Sync", () => {
       eventsService.unlinkEventFromGoogle.mockResolvedValue({
         eventId: "evt-1",
         success: false,
-        googleSyncError: "API error",
+        errors: ["API error"],
       });
 
       const result = await controller.unlinkGoogle("evt-1", adminUser);
 
       expect(result.success).toBe(false);
-      expect(result.googleSyncError).toBe("API error");
+      expect(result.errors).toContain("API error");
     });
   });
 });

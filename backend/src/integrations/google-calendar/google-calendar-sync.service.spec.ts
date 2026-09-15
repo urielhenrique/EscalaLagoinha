@@ -43,9 +43,14 @@ describe("GoogleCalendarSyncService", () => {
     googleCalendarConnection: {
       findUnique: jest.fn(),
     },
-    event: {
+    googleCalendarEventSync: {
       findUnique: jest.fn(),
-      update: jest.fn(),
+      findMany: jest.fn(),
+      upsert: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    schedule: {
+      findUnique: jest.fn(),
     },
   };
 
@@ -53,6 +58,36 @@ describe("GoogleCalendarSyncService", () => {
     refreshAccessToken: jest.fn(),
     getStoredAccessToken: jest.fn(),
   };
+
+  const scheduleId = "sched-001";
+  const userId = "user-123";
+  const eventId = "evt-001";
+
+  const defaultSchedule = {
+    id: scheduleId,
+    volunteerId: userId,
+    eventId,
+    status: "CONFIRMADO",
+    event: {
+      id: eventId,
+      churchId: "church-001",
+      nome: "Culto Dominical",
+      descricao: "Culto de domingo",
+      dataInicio: new Date("2026-09-15T19:00:00.000Z"),
+      dataFim: new Date("2026-09-15T21:00:00.000Z"),
+      recurrenceGroupId: null,
+    },
+  };
+
+  function mockSchedule(data: Record<string, unknown> = defaultSchedule) {
+    mockPrisma.schedule.findUnique.mockResolvedValue(data);
+  }
+
+  function mockConnection(calendarId: string | null = "primary") {
+    mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
+      calendarId,
+    });
+  }
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -131,78 +166,92 @@ describe("GoogleCalendarSyncService", () => {
     });
   });
 
-  describe("syncEvent", () => {
-    const userId = "user-123";
-    const input = {
-      eventId: "evt-001",
-      churchId: "church-001",
-      nome: "Culto Dominical",
-      descricao: "Culto de domingo",
-      dataInicio: new Date("2026-09-15T19:00:00.000Z"),
-      dataFim: new Date("2026-09-15T21:00:00.000Z"),
-      recurrenceGroupId: null,
-    };
+  describe("syncSchedule", () => {
+    it("should return ERROR when schedule not found", async () => {
+      mockPrisma.schedule.findUnique.mockResolvedValue(null);
+
+      const result = await service.syncSchedule(scheduleId);
+
+      expect(result.status).toBe(GoogleSyncStatus.ERROR);
+      expect(result.error).toBe("Escala não encontrada.");
+    });
+
+    it("should return NONE when schedule is CANCELADO", async () => {
+      mockSchedule({ ...defaultSchedule, status: "CANCELADO" });
+
+      const result = await service.syncSchedule(scheduleId);
+
+      expect(result.status).toBe(GoogleSyncStatus.NONE);
+      expect(result.googleEventId).toBeNull();
+      expect(result.error).toBeNull();
+    });
+
+    it("should return NONE when no Google Calendar connection", async () => {
+      mockSchedule();
+      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue(null);
+
+      const result = await service.syncSchedule(scheduleId);
+
+      expect(result.status).toBe(GoogleSyncStatus.NONE);
+    });
 
     it("should return ERROR when getStoredAccessToken returns null", async () => {
+      mockSchedule();
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(null);
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(scheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.ERROR);
       expect(result.error).toBe(
         "Google Calendar não conectado para este usuário.",
       );
-      expect(mockPrisma.event.update).toHaveBeenCalledWith({
-        where: { id: input.eventId },
-        data: {
-          googleSyncStatus: GoogleSyncStatus.ERROR,
-          googleSyncError:
-            "Google Calendar não conectado para este usuário.",
-        },
-      });
     });
 
-    it("should create new event when no existing googleEventId", async () => {
+    it("should create new event when no existing sync", async () => {
+      mockSchedule();
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(scheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
       expect(result.googleEventId).toBeDefined();
       expect(result.error).toBeNull();
-      expect(mockPrisma.event.update).toHaveBeenCalledWith({
-        where: { id: input.eventId },
-        data: {
+      expect(mockPrisma.googleCalendarEventSync.upsert).toHaveBeenCalledWith({
+        where: { scheduleId },
+        update: {
           googleEventId: "mocked-google-event-id",
-          googleSyncStatus: GoogleSyncStatus.SYNCED,
+          syncStatus: GoogleSyncStatus.SYNCED,
           lastSyncedAt: expect.any(Date),
-          googleSyncError: null,
+          syncError: null,
+        },
+        create: {
+          scheduleId,
+          userId,
+          eventId,
+          googleEventId: "mocked-google-event-id",
+          syncStatus: GoogleSyncStatus.SYNCED,
+          lastSyncedAt: expect.any(Date),
         },
       });
     });
 
     it("should update existing synced event", async () => {
+      mockSchedule();
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "existing-google-id",
-        googleSyncStatus: GoogleSyncStatus.SYNCED,
+        syncStatus: GoogleSyncStatus.SYNCED,
       });
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(scheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
       expect(result.googleEventId).toBe("existing-google-id");
@@ -210,75 +259,65 @@ describe("GoogleCalendarSyncService", () => {
     });
 
     it("should use 'primary' when connection has no calendarId", async () => {
+      mockSchedule();
+      mockConnection(null);
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: null,
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(scheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
     });
 
-    it("should handle null churchId in input", async () => {
+    it("should handle null churchId in event", async () => {
+      mockSchedule({
+        ...defaultSchedule,
+        event: { ...defaultSchedule.event, churchId: null },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const inputNoChurch = { ...input, churchId: null };
-      const result = await service.syncEvent(userId, inputNoChurch);
+      const result = await service.syncSchedule(scheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
     });
 
-    it("should handle null descricao in input", async () => {
+    it("should handle null descricao in event", async () => {
+      mockSchedule({
+        ...defaultSchedule,
+        event: { ...defaultSchedule.event, descricao: null },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const inputNoDesc = { ...input, descricao: null };
-      const result = await service.syncEvent(userId, inputNoDesc);
+      const result = await service.syncSchedule(scheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
     });
 
-    it("should handle recurrenceGroupId in input", async () => {
+    it("should handle recurrenceGroupId in event", async () => {
+      mockSchedule({
+        ...defaultSchedule,
+        event: {
+          ...defaultSchedule.event,
+          recurrenceGroupId: "rec-group-001",
+        },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const inputRecurrence = {
-        ...input,
-        recurrenceGroupId: "rec-group-001",
-      };
-      const result = await service.syncEvent(userId, inputRecurrence);
+      const result = await service.syncSchedule(scheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
     });
@@ -287,91 +326,68 @@ describe("GoogleCalendarSyncService", () => {
       googleapisMock.__mock__.mockInsert.mockRejectedValueOnce(
         new Error("Google API Error"),
       );
-
+      mockSchedule();
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(scheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.ERROR);
       expect(result.error).toBe("Google API Error");
 
-      // Restore mock for subsequent tests
       googleapisMock.__mock__.mockInsert.mockResolvedValue({
         data: { id: "mocked-google-event-id" },
       });
     });
 
     it("should handle connection not found (null)", async () => {
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
-        "access-token",
-      );
+      mockSchedule();
       mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue(null);
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(scheduleId);
 
-      expect(result.status).toBe(GoogleSyncStatus.SYNCED);
+      expect(result.status).toBe(GoogleSyncStatus.NONE);
     });
 
     it("should handle PENDING status event", async () => {
+      mockSchedule();
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.PENDING,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(scheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
     });
 
     it("should handle ERROR status event as new event", async () => {
+      mockSchedule();
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.ERROR,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(scheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
     });
   });
 
   describe("deleteGoogleEvent", () => {
-    const userId = "user-123";
-    const eventId = "evt-001";
-
     it("should return error when not connected", async () => {
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(null);
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "google-evt-123",
-        googleSyncStatus: GoogleSyncStatus.SYNCED,
+        userId,
       });
+      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(null);
 
-      const result = await service.deleteGoogleEvent(userId, eventId);
+      const result = await service.deleteGoogleEvent(scheduleId);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe(
@@ -383,24 +399,18 @@ describe("GoogleCalendarSyncService", () => {
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const result = await service.deleteGoogleEvent(userId, eventId);
+      const result = await service.deleteGoogleEvent(scheduleId);
 
       expect(result.success).toBe(true);
       expect(result.error).toBeNull();
     });
 
     it("should succeed when event not found", async () => {
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
-        "access-token",
-      );
-      mockPrisma.event.findUnique.mockResolvedValue(null);
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const result = await service.deleteGoogleEvent(userId, eventId);
+      const result = await service.deleteGoogleEvent(scheduleId);
 
       expect(result.success).toBe(true);
     });
@@ -409,39 +419,33 @@ describe("GoogleCalendarSyncService", () => {
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "google-evt-123",
-        googleSyncStatus: GoogleSyncStatus.SYNCED,
+        userId,
       });
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
+      mockConnection();
 
-      const result = await service.deleteGoogleEvent(userId, eventId);
+      const result = await service.deleteGoogleEvent(scheduleId);
 
       expect(result.success).toBe(true);
-      expect(mockPrisma.event.update).toHaveBeenCalledWith({
-        where: { id: eventId },
-        data: {
-          googleEventId: null,
-          googleSyncStatus: GoogleSyncStatus.NONE,
-          lastSyncedAt: null,
-          googleSyncError: null,
+      expect(mockPrisma.googleCalendarEventSync.deleteMany).toHaveBeenCalledWith(
+        {
+          where: { scheduleId },
         },
-      });
+      );
     });
 
     it("should handle connection not found", async () => {
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "google-evt-123",
-        googleSyncStatus: GoogleSyncStatus.SYNCED,
+        userId,
       });
       mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue(null);
 
-      const result = await service.deleteGoogleEvent(userId, eventId);
+      const result = await service.deleteGoogleEvent(scheduleId);
 
       expect(result).toBeDefined();
       expect(typeof result.success).toBe("boolean");
@@ -451,15 +455,13 @@ describe("GoogleCalendarSyncService", () => {
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "some-google-id",
-        googleSyncStatus: GoogleSyncStatus.NONE,
+        userId,
       });
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
+      mockConnection();
 
-      const result = await service.deleteGoogleEvent(userId, eventId);
+      const result = await service.deleteGoogleEvent(scheduleId);
 
       expect(result).toBeDefined();
     });
@@ -468,115 +470,108 @@ describe("GoogleCalendarSyncService", () => {
       googleapisMock.__mock__.mockDelete.mockRejectedValueOnce(
         new Error("Delete failed"),
       );
-
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "google-evt-fail",
-        googleSyncStatus: GoogleSyncStatus.SYNCED,
+        userId,
       });
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
+      mockConnection();
 
-      const result = await service.deleteGoogleEvent(userId, eventId);
+      const result = await service.deleteGoogleEvent(scheduleId);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("Delete failed");
 
-      // Restore
       googleapisMock.__mock__.mockDelete.mockResolvedValue({});
     });
   });
 
-  describe("syncEvent - edge cases", () => {
-    const userId = "user-456";
-    const input = {
+  describe("syncSchedule - edge cases", () => {
+    const edgeScheduleId = "sched-edge-001";
+    const edgeUserId = "user-456";
+
+    const edgeSchedule = {
+      id: edgeScheduleId,
+      volunteerId: edgeUserId,
       eventId: "evt-edge-001",
-      churchId: "church-001",
-      nome: "Evento Edge",
-      descricao: "Teste",
-      dataInicio: new Date("2026-12-31T23:00:00.000Z"),
-      dataFim: new Date("2027-01-01T01:00:00.000Z"),
-      recurrenceGroupId: null,
+      status: "CONFIRMADO",
+      event: {
+        id: "evt-edge-001",
+        churchId: "church-001",
+        nome: "Evento Edge",
+        descricao: "Teste",
+        dataInicio: new Date("2026-12-31T23:00:00.000Z"),
+        dataFim: new Date("2027-01-01T01:00:00.000Z"),
+        recurrenceGroupId: null,
+      },
     };
 
     it("should handle event with existing ERROR status and googleEventId", async () => {
+      mockSchedule(edgeSchedule);
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "old-google-id",
-        googleSyncStatus: GoogleSyncStatus.ERROR,
+        syncStatus: GoogleSyncStatus.ERROR,
       });
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(edgeScheduleId);
 
-      // ERROR status => treated as new event (creates, not updates)
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
       expect(googleapisMock.__mock__.mockInsert).toHaveBeenCalled();
     });
 
     it("should handle very long event name", async () => {
+      mockSchedule({
+        ...edgeSchedule,
+        event: { ...edgeSchedule.event, nome: "A".repeat(500) },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const longInput = { ...input, nome: "A".repeat(500) };
-      const result = await service.syncEvent(userId, longInput);
+      const result = await service.syncSchedule(edgeScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
     });
 
     it("should handle special characters in event name", async () => {
+      mockSchedule({
+        ...edgeSchedule,
+        event: { ...edgeSchedule.event, nome: "Culto @ # $ % & * ()" },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const specialInput = {
-        ...input,
-        nome: "Culto @ # $ % & * ()",
-      };
-      const result = await service.syncEvent(userId, specialInput);
+      const result = await service.syncSchedule(edgeScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
     });
 
     it("should handle unicode characters in event name", async () => {
+      mockSchedule({
+        ...edgeSchedule,
+        event: {
+          ...edgeSchedule.event,
+          nome: "Culto Dominical - Igreja da Lagoinha",
+        },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const unicodeInput = {
-        ...input,
-        nome: "Culto Dominical - Igreja da Lagoinha",
-      };
-      const result = await service.syncEvent(userId, unicodeInput);
+      const result = await service.syncSchedule(edgeScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
     });
@@ -584,116 +579,117 @@ describe("GoogleCalendarSyncService", () => {
 
   describe("integration patterns", () => {
     it("should handle sync after disconnect and reconnect", async () => {
-      const userId = "user-reconnect";
-      const input = {
+      const reconnectScheduleId = "sched-reconnect";
+      const reconnectSchedule = {
+        ...defaultSchedule,
+        id: reconnectScheduleId,
+        volunteerId: "user-reconnect",
         eventId: "evt-reconnect",
-        churchId: "church-001",
-        nome: "Culto",
-        descricao: null,
-        dataInicio: new Date("2026-09-15T19:00:00.000Z"),
-        dataFim: new Date("2026-09-15T21:00:00.000Z"),
-        recurrenceGroupId: null,
+        event: {
+          ...defaultSchedule.event,
+          id: "evt-reconnect",
+          nome: "Culto",
+          descricao: null,
+        },
       };
 
-      // First attempt: not connected
+      mockPrisma.schedule.findUnique.mockResolvedValue(reconnectSchedule);
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(null);
-      const result1 = await service.syncEvent(userId, input);
+
+      const result1 = await service.syncSchedule(reconnectScheduleId);
       expect(result1.status).toBe(GoogleSyncStatus.ERROR);
 
-      // Second attempt: connected
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "new-access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.ERROR,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const result2 = await service.syncEvent(userId, input);
+      const result2 = await service.syncSchedule(reconnectScheduleId);
       expect(result2.status).toBe(GoogleSyncStatus.SYNCED);
     });
 
     it("should handle multiple events in sequence", async () => {
-      const userId = "user-seq";
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockConnection();
 
-      const events = [
+      const schedules = [
         {
+          id: "sched-seq-1",
+          volunteerId: "user-seq",
           eventId: "evt-seq-1",
-          churchId: "church-001",
-          nome: "Culto 1",
-          descricao: null,
-          dataInicio: new Date("2026-09-15T19:00:00.000Z"),
-          dataFim: new Date("2026-09-15T21:00:00.000Z"),
-          recurrenceGroupId: null,
+          status: "CONFIRMADO",
+          event: {
+            id: "evt-seq-1",
+            churchId: "church-001",
+            nome: "Culto 1",
+            descricao: null,
+            dataInicio: new Date("2026-09-15T19:00:00.000Z"),
+            dataFim: new Date("2026-09-15T21:00:00.000Z"),
+            recurrenceGroupId: null,
+          },
         },
         {
+          id: "sched-seq-2",
+          volunteerId: "user-seq",
           eventId: "evt-seq-2",
-          churchId: "church-001",
-          nome: "Culto 2",
-          descricao: null,
-          dataInicio: new Date("2026-09-22T19:00:00.000Z"),
-          dataFim: new Date("2026-09-22T21:00:00.000Z"),
-          recurrenceGroupId: null,
+          status: "CONFIRMADO",
+          event: {
+            id: "evt-seq-2",
+            churchId: "church-001",
+            nome: "Culto 2",
+            descricao: null,
+            dataInicio: new Date("2026-09-22T19:00:00.000Z"),
+            dataFim: new Date("2026-09-22T21:00:00.000Z"),
+            recurrenceGroupId: null,
+          },
         },
       ];
 
-      for (const evt of events) {
-        const result = await service.syncEvent(userId, evt);
+      for (const sched of schedules) {
+        mockPrisma.schedule.findUnique.mockResolvedValue(sched);
+        mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
+        const result = await service.syncSchedule(sched.id);
         expect(result.status).toBe(GoogleSyncStatus.SYNCED);
       }
     });
 
     it("should handle delete when connection has no calendarId", async () => {
-      const userId = "user-delete-no-cal";
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "google-evt-delete",
-        googleSyncStatus: GoogleSyncStatus.SYNCED,
+        userId: "user-delete-no-cal",
       });
       mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
         calendarId: null,
       });
 
-      const result = await service.deleteGoogleEvent(
-        userId,
-        "evt-delete",
-      );
+      const result = await service.deleteGoogleEvent("sched-delete");
 
       expect(result.success).toBe(true);
     });
   });
 
   describe("deterministic ID consistency", () => {
-    it("should always produce same ID for same event", () => {
-      const eventId = "550e8400-e29b-41d4-a716-446655440000";
-      const id1 = service.buildGoogleEventId(eventId);
-      const id2 = service.buildGoogleEventId(eventId);
+    it("should always produce same ID for same schedule", () => {
+      const sid = "550e8400-e29b-41d4-a716-446655440000";
+      const id1 = service.buildGoogleEventId(sid);
+      const id2 = service.buildGoogleEventId(sid);
       expect(id1).toBe(id2);
     });
 
-    it("should produce different IDs for different events", () => {
-      const id1 = service.buildGoogleEventId("evt-001");
-      const id2 = service.buildGoogleEventId("evt-002");
+    it("should produce different IDs for different schedules", () => {
+      const id1 = service.buildGoogleEventId("sched-001");
+      const id2 = service.buildGoogleEventId("sched-002");
       expect(id1).not.toBe(id2);
     });
 
     it("should always start with 'escala-' prefix", () => {
-      const result = service.buildGoogleEventId("any-event-id");
+      const result = service.buildGoogleEventId("any-schedule-id");
       expect(result).toMatch(/^escala-/);
     });
   });
@@ -712,27 +708,29 @@ describe("GoogleCalendarSyncService", () => {
     });
 
     it("should send correct dateTime and timeZone in start/end", async () => {
-      const userId = "user-tz-body";
+      const tzScheduleId = "sched-tz-body";
+      mockSchedule({
+        ...defaultSchedule,
+        id: tzScheduleId,
+        volunteerId: "user-tz-body",
+        eventId: "evt-tz-body-001",
+        event: {
+          id: "evt-tz-body-001",
+          churchId: "church-001",
+          nome: "Culto",
+          descricao: null,
+          dataInicio: new Date("2026-09-12T22:00:00.000Z"),
+          dataFim: new Date("2026-09-13T00:00:00.000Z"),
+          recurrenceGroupId: null,
+        },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      await service.syncEvent(userId, {
-        eventId: "evt-tz-body-001",
-        churchId: "church-001",
-        nome: "Culto",
-        descricao: null,
-        dataInicio: new Date("2026-09-12T22:00:00.000Z"),
-        dataFim: new Date("2026-09-13T00:00:00.000Z"),
-        recurrenceGroupId: null,
-      });
+      await service.syncSchedule(tzScheduleId);
 
       const insertCall =
         googleapisMock.__mock__.mockInsert.mock.calls[0]?.[0];
@@ -753,27 +751,26 @@ describe("GoogleCalendarSyncService", () => {
 
   describe("extended properties", () => {
     it("should include source as escala-facil in create", async () => {
-      const userId = "user-ext-1";
+      const extScheduleId = "sched-ext-1";
+      mockSchedule({
+        ...defaultSchedule,
+        id: extScheduleId,
+        volunteerId: "user-ext-1",
+        eventId: "evt-ext-001",
+        event: {
+          ...defaultSchedule.event,
+          id: "evt-ext-001",
+          nome: "Teste Extended Props",
+          descricao: null,
+        },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const result = await service.syncEvent(userId, {
-        eventId: "evt-ext-001",
-        churchId: "church-001",
-        nome: "Teste Extended Props",
-        descricao: null,
-        dataInicio: new Date("2026-09-15T19:00:00.000Z"),
-        dataFim: new Date("2026-09-15T21:00:00.000Z"),
-        recurrenceGroupId: null,
-      });
+      const result = await service.syncSchedule(extScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
 
@@ -789,27 +786,27 @@ describe("GoogleCalendarSyncService", () => {
     });
 
     it("should include churchId in extended properties", async () => {
-      const userId = "user-ext-2";
+      const extScheduleId = "sched-ext-2";
+      mockSchedule({
+        ...defaultSchedule,
+        id: extScheduleId,
+        volunteerId: "user-ext-2",
+        eventId: "evt-ext-002",
+        event: {
+          ...defaultSchedule.event,
+          id: "evt-ext-002",
+          nome: "Teste Church",
+          descricao: null,
+          churchId: "church-002",
+        },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const result = await service.syncEvent(userId, {
-        eventId: "evt-ext-002",
-        churchId: "church-002",
-        nome: "Teste Church",
-        descricao: null,
-        dataInicio: new Date("2026-09-15T19:00:00.000Z"),
-        dataFim: new Date("2026-09-15T21:00:00.000Z"),
-        recurrenceGroupId: null,
-      });
+      const result = await service.syncSchedule(extScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
 
@@ -821,27 +818,27 @@ describe("GoogleCalendarSyncService", () => {
     });
 
     it("should set empty string for null churchId", async () => {
-      const userId = "user-ext-3";
+      const extScheduleId = "sched-ext-3";
+      mockSchedule({
+        ...defaultSchedule,
+        id: extScheduleId,
+        volunteerId: "user-ext-3",
+        eventId: "evt-ext-003",
+        event: {
+          ...defaultSchedule.event,
+          id: "evt-ext-003",
+          nome: "Teste No Church",
+          descricao: null,
+          churchId: null,
+        },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const result = await service.syncEvent(userId, {
-        eventId: "evt-ext-003",
-        churchId: null,
-        nome: "Teste No Church",
-        descricao: null,
-        dataInicio: new Date("2026-09-15T19:00:00.000Z"),
-        dataFim: new Date("2026-09-15T21:00:00.000Z"),
-        recurrenceGroupId: null,
-      });
+      const result = await service.syncSchedule(extScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
 
@@ -855,27 +852,29 @@ describe("GoogleCalendarSyncService", () => {
 
   describe("idempotency", () => {
     it("should not create duplicate when event already synced", async () => {
-      const userId = "user-idem";
+      const idemScheduleId = "sched-idem";
+      mockSchedule({
+        ...defaultSchedule,
+        id: idemScheduleId,
+        volunteerId: "user-idem",
+        eventId: "evt-idem-001",
+        event: {
+          ...defaultSchedule.event,
+          id: "evt-idem-001",
+          nome: "Teste Idempotency",
+          descricao: null,
+        },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "already-synced-id",
-        googleSyncStatus: GoogleSyncStatus.SYNCED,
+        syncStatus: GoogleSyncStatus.SYNCED,
       });
 
-      const result = await service.syncEvent(userId, {
-        eventId: "evt-idem-001",
-        churchId: "church-001",
-        nome: "Teste Idempotency",
-        descricao: null,
-        dataInicio: new Date("2026-09-15T19:00:00.000Z"),
-        dataFim: new Date("2026-09-15T21:00:00.000Z"),
-        recurrenceGroupId: null,
-      });
+      const result = await service.syncSchedule(idemScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
       expect(result.googleEventId).toBe("already-synced-id");
@@ -884,106 +883,102 @@ describe("GoogleCalendarSyncService", () => {
     });
 
     it("should send deterministic ID in requestBody.id on create", async () => {
-      const userId = "user-idem-create";
+      const idemScheduleId = "sched-idem-create";
+      mockSchedule({
+        ...defaultSchedule,
+        id: idemScheduleId,
+        volunteerId: "user-idem-create",
+        eventId: "evt-idem-create-001",
+        event: {
+          ...defaultSchedule.event,
+          id: "evt-idem-create-001",
+          nome: "Teste Create ID",
+          descricao: null,
+        },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      await service.syncEvent(userId, {
-        eventId: "evt-idem-create-001",
-        churchId: "church-001",
-        nome: "Teste Create ID",
-        descricao: null,
-        dataInicio: new Date("2026-09-15T19:00:00.000Z"),
-        dataFim: new Date("2026-09-15T21:00:00.000Z"),
-        recurrenceGroupId: null,
-      });
+      await service.syncSchedule(idemScheduleId);
 
-      const expectedId = service.buildGoogleEventId("evt-idem-create-001");
+      const expectedId = service.buildGoogleEventId(idemScheduleId);
       const insertCall =
         googleapisMock.__mock__.mockInsert.mock.calls[0]?.[0];
       expect(insertCall?.requestBody?.id).toBe(expectedId);
     });
 
     it("should persist response.data.id which equals the deterministic ID", async () => {
-      const userId = "user-idem-persist";
+      const idemScheduleId = "sched-idem-persist";
+      mockSchedule({
+        ...defaultSchedule,
+        id: idemScheduleId,
+        volunteerId: "user-idem-persist",
+        eventId: "evt-idem-persist-001",
+        event: {
+          ...defaultSchedule.event,
+          id: "evt-idem-persist-001",
+          nome: "Teste Persist ID",
+          descricao: null,
+        },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      const result = await service.syncEvent(userId, {
-        eventId: "evt-idem-persist-001",
-        churchId: "church-001",
-        nome: "Teste Persist ID",
-        descricao: null,
-        dataInicio: new Date("2026-09-15T19:00:00.000Z"),
-        dataFim: new Date("2026-09-15T21:00:00.000Z"),
-        recurrenceGroupId: null,
-      });
+      const result = await service.syncSchedule(idemScheduleId);
 
-      // Mock returns "mocked-google-event-id" for all calls
       expect(result.googleEventId).toBe("mocked-google-event-id");
-      expect(mockPrisma.event.update).toHaveBeenCalledWith({
-        where: { id: "evt-idem-persist-001" },
-        data: {
+      expect(mockPrisma.googleCalendarEventSync.upsert).toHaveBeenCalledWith({
+        where: { scheduleId: idemScheduleId },
+        update: {
           googleEventId: "mocked-google-event-id",
-          googleSyncStatus: GoogleSyncStatus.SYNCED,
+          syncStatus: GoogleSyncStatus.SYNCED,
           lastSyncedAt: expect.any(Date),
-          googleSyncError: null,
+          syncError: null,
+        },
+        create: {
+          scheduleId: idemScheduleId,
+          userId: "user-idem-persist",
+          eventId: "evt-idem-persist-001",
+          googleEventId: "mocked-google-event-id",
+          syncStatus: GoogleSyncStatus.SYNCED,
+          lastSyncedAt: expect.any(Date),
         },
       });
     });
 
-    it("should use same deterministic ID on retry (same event)", async () => {
-      const userId = "user-idem-retry";
+    it("should use same deterministic ID on retry (same schedule)", async () => {
+      const idemScheduleId = "sched-idem-retry";
+      mockSchedule({
+        ...defaultSchedule,
+        id: idemScheduleId,
+        volunteerId: "user-idem-retry",
+        eventId: "evt-idem-retry-001",
+        event: {
+          ...defaultSchedule.event,
+          id: "evt-idem-retry-001",
+          nome: "Teste Retry",
+          descricao: null,
+        },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
 
-      const input = {
-        eventId: "evt-idem-retry-001",
-        churchId: "church-001",
-        nome: "Teste Retry",
-        descricao: null,
-        dataInicio: new Date("2026-09-15T19:00:00.000Z"),
-        dataFim: new Date("2026-09-15T21:00:00.000Z"),
-        recurrenceGroupId: null,
-      };
+      const expectedId = service.buildGoogleEventId(idemScheduleId);
 
-      const expectedId = service.buildGoogleEventId(input.eventId);
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValueOnce(null);
+      await service.syncSchedule(idemScheduleId);
 
-      // First call: event not synced → creates
-      mockPrisma.event.findUnique.mockResolvedValueOnce({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
-      await service.syncEvent(userId, input);
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValueOnce(null);
+      await service.syncSchedule(idemScheduleId);
 
-      // Second call: still not synced (simulates failed persist) → creates again
-      mockPrisma.event.findUnique.mockResolvedValueOnce({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
-      await service.syncEvent(userId, input);
-
-      // Both calls must use the same deterministic ID
       const call1Id =
         googleapisMock.__mock__.mockInsert.mock.calls[0]?.[0]
           ?.requestBody?.id;
@@ -999,27 +994,26 @@ describe("GoogleCalendarSyncService", () => {
 
   describe("Brazil timezone in Google event body", () => {
     it("should send converted dateTime and America/Sao_Paulo timezone", async () => {
-      const userId = "user-tz";
+      const tzScheduleId = "sched-tz";
+      mockSchedule({
+        ...defaultSchedule,
+        id: tzScheduleId,
+        volunteerId: "user-tz",
+        eventId: "evt-tz-001",
+        event: {
+          ...defaultSchedule.event,
+          id: "evt-tz-001",
+          nome: "Culto",
+          descricao: null,
+        },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
 
-      await service.syncEvent(userId, {
-        eventId: "evt-tz-001",
-        churchId: "church-001",
-        nome: "Culto",
-        descricao: null,
-        dataInicio: new Date("2026-09-15T19:00:00.000Z"),
-        dataFim: new Date("2026-09-15T21:00:00.000Z"),
-        recurrenceGroupId: null,
-      });
+      await service.syncSchedule(tzScheduleId);
 
       const insertCall =
         googleapisMock.__mock__.mockInsert.mock.calls[0]?.[0];
@@ -1040,27 +1034,32 @@ describe("GoogleCalendarSyncService", () => {
 
   describe("update event body structure", () => {
     it("should include extendedProperties in update body", async () => {
-      const userId = "user-upd";
+      const updScheduleId = "sched-upd";
+      mockSchedule({
+        ...defaultSchedule,
+        id: updScheduleId,
+        volunteerId: "user-upd",
+        eventId: "evt-upd-001",
+        event: {
+          id: "evt-upd-001",
+          churchId: "church-001",
+          nome: "Evento Atualizado",
+          descricao: "desc",
+          dataInicio: new Date("2026-09-15T19:00:00.000Z"),
+          dataFim: new Date("2026-09-15T21:00:00.000Z"),
+          recurrenceGroupId: "rec-001",
+        },
+      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
         "access-token",
       );
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "existing-google-id",
-        googleSyncStatus: GoogleSyncStatus.SYNCED,
+        syncStatus: GoogleSyncStatus.SYNCED,
       });
 
-      await service.syncEvent(userId, {
-        eventId: "evt-upd-001",
-        churchId: "church-001",
-        nome: "Evento Atualizado",
-        descricao: "desc",
-        dataInicio: new Date("2026-09-15T19:00:00.000Z"),
-        dataFim: new Date("2026-09-15T21:00:00.000Z"),
-        recurrenceGroupId: "rec-001",
-      });
+      await service.syncSchedule(updScheduleId);
 
       const updateCall =
         googleapisMock.__mock__.mockUpdate.mock.calls[0]?.[0];
@@ -1070,21 +1069,27 @@ describe("GoogleCalendarSyncService", () => {
       ).toMatchObject({
         "escala-facil": "true",
         eventId: "evt-upd-001",
+        scheduleId: updScheduleId,
         recurrenceGroupId: "rec-001",
       });
     });
   });
 
   describe("retry on 401", () => {
-    const userId = "user-retry";
-    const input = {
+    const retryScheduleId = "sched-retry";
+    const retryUserId = "user-retry";
+
+    const retrySchedule = {
+      ...defaultSchedule,
+      id: retryScheduleId,
+      volunteerId: retryUserId,
       eventId: "evt-retry-001",
-      churchId: "church-001",
-      nome: "Evento Retry",
-      descricao: "Teste retry",
-      dataInicio: new Date("2026-09-15T19:00:00.000Z"),
-      dataFim: new Date("2026-09-15T21:00:00.000Z"),
-      recurrenceGroupId: null,
+      event: {
+        ...defaultSchedule.event,
+        id: "evt-retry-001",
+        nome: "Evento Retry",
+        descricao: "Teste retry",
+      },
     };
 
     const google401Error = Object.assign(new Error("Unauthorized"), {
@@ -1107,222 +1112,249 @@ describe("GoogleCalendarSyncService", () => {
     });
 
     function mockSyncCreatePath() {
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue("token-stored");
-      mockGoogleCalendarService.refreshAccessToken.mockResolvedValue("token-refreshed");
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockSchedule(retrySchedule);
+      mockConnection();
+      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
+        "token-stored",
+      );
+      mockGoogleCalendarService.refreshAccessToken.mockResolvedValue(
+        "token-refreshed",
+      );
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
     }
 
     function mockSyncUpdatePath() {
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue("token-stored");
-      mockGoogleCalendarService.refreshAccessToken.mockResolvedValue("token-refreshed");
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockSchedule(retrySchedule);
+      mockConnection();
+      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
+        "token-stored",
+      );
+      mockGoogleCalendarService.refreshAccessToken.mockResolvedValue(
+        "token-refreshed",
+      );
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "existing-google-id",
-        googleSyncStatus: GoogleSyncStatus.SYNCED,
+        syncStatus: GoogleSyncStatus.SYNCED,
       });
     }
 
     function mockDeletePath() {
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue("token-stored");
-      mockGoogleCalendarService.refreshAccessToken.mockResolvedValue("token-refreshed");
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
+        "token-stored",
+      );
+      mockGoogleCalendarService.refreshAccessToken.mockResolvedValue(
+        "token-refreshed",
+      );
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "google-del-001",
-        googleSyncStatus: GoogleSyncStatus.SYNCED,
+        userId: retryUserId,
       });
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
+      mockConnection();
     }
 
-    it("syncEvent: 401 on insert → refresh → retry succeeds", async () => {
+    it("syncSchedule: 401 on insert → refresh → retry succeeds", async () => {
       mockSyncCreatePath();
       googleapisMock.__mock__.mockInsert
         .mockRejectedValueOnce(google401Error)
         .mockResolvedValueOnce({ data: { id: "google-retry-ok" } });
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(retryScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
       expect(result.googleEventId).toBe("google-retry-ok");
-      expect(mockGoogleCalendarService.getStoredAccessToken).toHaveBeenCalledTimes(1);
-      expect(mockGoogleCalendarService.refreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.getStoredAccessToken,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.refreshAccessToken,
+      ).toHaveBeenCalledTimes(1);
     });
 
-    it("syncEvent: 401 on insert → refresh fails → ERROR", async () => {
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue("token-stored");
+    it("syncSchedule: 401 on insert → refresh fails → ERROR", async () => {
+      mockSchedule(retrySchedule);
+      mockConnection();
+      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
+        "token-stored",
+      );
       mockGoogleCalendarService.refreshAccessToken.mockResolvedValue(null);
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
       googleapisMock.__mock__.mockInsert.mockRejectedValueOnce(google401Error);
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(retryScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.ERROR);
       expect(result.error).toContain("Reconecte sua conta");
-      expect(mockGoogleCalendarService.getStoredAccessToken).toHaveBeenCalledTimes(1);
-      expect(mockGoogleCalendarService.refreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.getStoredAccessToken,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.refreshAccessToken,
+      ).toHaveBeenCalledTimes(1);
     });
 
-    it("syncEvent: 401 on insert → refresh → retry 401 again → ERROR", async () => {
+    it("syncSchedule: 401 on insert → refresh → retry 401 again → ERROR", async () => {
       mockSyncCreatePath();
       googleapisMock.__mock__.mockInsert
         .mockRejectedValueOnce(google401Error)
         .mockRejectedValueOnce(google401Error);
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(retryScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.ERROR);
       expect(result.error).toBe("Unauthorized");
-      expect(mockGoogleCalendarService.getStoredAccessToken).toHaveBeenCalledTimes(1);
-      expect(mockGoogleCalendarService.refreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.getStoredAccessToken,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.refreshAccessToken,
+      ).toHaveBeenCalledTimes(1);
     });
 
-    it("syncEvent: 401 on update → refresh → retry succeeds", async () => {
+    it("syncSchedule: 401 on update → refresh → retry succeeds", async () => {
       mockSyncUpdatePath();
       googleapisMock.__mock__.mockUpdate
         .mockRejectedValueOnce(google401Error)
         .mockResolvedValueOnce({ data: {} });
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(retryScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
       expect(result.googleEventId).toBe("existing-google-id");
-      expect(mockGoogleCalendarService.getStoredAccessToken).toHaveBeenCalledTimes(1);
-      expect(mockGoogleCalendarService.refreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.getStoredAccessToken,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.refreshAccessToken,
+      ).toHaveBeenCalledTimes(1);
     });
 
-    it("syncEvent: 401 on update → refresh → retry 404 → recreate succeeds", async () => {
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue("token-stored");
-      mockGoogleCalendarService.refreshAccessToken.mockResolvedValue("token-refreshed");
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
+    it("syncSchedule: 401 on update → refresh → retry 404 → recreate succeeds", async () => {
+      mockSchedule(retrySchedule);
+      mockConnection();
+      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
+        "token-stored",
+      );
+      mockGoogleCalendarService.refreshAccessToken.mockResolvedValue(
+        "token-refreshed",
+      );
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
+        googleEventId: "existing-google-id",
+        syncStatus: GoogleSyncStatus.SYNCED,
       });
-      mockPrisma.event.findUnique
-        .mockResolvedValueOnce({
-          googleEventId: "existing-google-id",
-          googleSyncStatus: GoogleSyncStatus.SYNCED,
-        })
-        .mockResolvedValueOnce({
-          googleEventId: null,
-          googleSyncStatus: GoogleSyncStatus.NONE,
-        });
       googleapisMock.__mock__.mockUpdate.mockRejectedValueOnce(google404Error);
       googleapisMock.__mock__.mockInsert.mockResolvedValueOnce({
         data: { id: "new-google-id" },
       });
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(retryScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.SYNCED);
       expect(result.googleEventId).toBe("new-google-id");
     });
 
-    it("syncEvent: 403 on insert → no refresh, throw", async () => {
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue("token-stored");
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+    it("syncSchedule: 403 on insert → no refresh, throw", async () => {
+      mockSchedule(retrySchedule);
+      mockConnection();
+      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
+        "token-stored",
+      );
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
       googleapisMock.__mock__.mockInsert.mockRejectedValueOnce(google403Error);
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(retryScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.ERROR);
       expect(result.error).toBe("Forbidden");
-      expect(mockGoogleCalendarService.getStoredAccessToken).toHaveBeenCalledTimes(1);
-      expect(mockGoogleCalendarService.refreshAccessToken).not.toHaveBeenCalled();
+      expect(
+        mockGoogleCalendarService.getStoredAccessToken,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.refreshAccessToken,
+      ).not.toHaveBeenCalled();
     });
 
-    it("syncEvent: 404 on insert → no refresh, throw", async () => {
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue("token-stored");
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+    it("syncSchedule: 404 on insert → no refresh, throw", async () => {
+      mockSchedule(retrySchedule);
+      mockConnection();
+      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
+        "token-stored",
+      );
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
       googleapisMock.__mock__.mockInsert.mockRejectedValueOnce(google404Error);
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(retryScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.ERROR);
       expect(result.error).toBe("Not Found");
-      expect(mockGoogleCalendarService.getStoredAccessToken).toHaveBeenCalledTimes(1);
-      expect(mockGoogleCalendarService.refreshAccessToken).not.toHaveBeenCalled();
+      expect(
+        mockGoogleCalendarService.getStoredAccessToken,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.refreshAccessToken,
+      ).not.toHaveBeenCalled();
     });
 
-    it("syncEvent: 409 on insert → no refresh, throw", async () => {
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue("token-stored");
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+    it("syncSchedule: 409 on insert → no refresh, throw", async () => {
+      mockSchedule(retrySchedule);
+      mockConnection();
+      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
+        "token-stored",
+      );
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
       googleapisMock.__mock__.mockInsert.mockRejectedValueOnce(google409Error);
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(retryScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.ERROR);
       expect(result.error).toBe("Conflict");
-      expect(mockGoogleCalendarService.getStoredAccessToken).toHaveBeenCalledTimes(1);
-      expect(mockGoogleCalendarService.refreshAccessToken).not.toHaveBeenCalled();
+      expect(
+        mockGoogleCalendarService.getStoredAccessToken,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.refreshAccessToken,
+      ).not.toHaveBeenCalled();
     });
 
-    it("syncEvent: 429 on insert → no refresh, throw", async () => {
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue("token-stored");
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+    it("syncSchedule: 429 on insert → no refresh, throw", async () => {
+      mockSchedule(retrySchedule);
+      mockConnection();
+      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
+        "token-stored",
+      );
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
       googleapisMock.__mock__.mockInsert.mockRejectedValueOnce(google429Error);
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(retryScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.ERROR);
       expect(result.error).toBe("Rate Limited");
-      expect(mockGoogleCalendarService.getStoredAccessToken).toHaveBeenCalledTimes(1);
-      expect(mockGoogleCalendarService.refreshAccessToken).not.toHaveBeenCalled();
+      expect(
+        mockGoogleCalendarService.getStoredAccessToken,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.refreshAccessToken,
+      ).not.toHaveBeenCalled();
     });
 
-    it("syncEvent: 500 on insert → no refresh, throw", async () => {
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue("token-stored");
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
-      mockPrisma.event.findUnique.mockResolvedValue({
-        googleEventId: null,
-        googleSyncStatus: GoogleSyncStatus.NONE,
-      });
+    it("syncSchedule: 500 on insert → no refresh, throw", async () => {
+      mockSchedule(retrySchedule);
+      mockConnection();
+      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
+        "token-stored",
+      );
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue(null);
       googleapisMock.__mock__.mockInsert.mockRejectedValueOnce(google500Error);
 
-      const result = await service.syncEvent(userId, input);
+      const result = await service.syncSchedule(retryScheduleId);
 
       expect(result.status).toBe(GoogleSyncStatus.ERROR);
       expect(result.error).toBe("Internal Server Error");
-      expect(mockGoogleCalendarService.getStoredAccessToken).toHaveBeenCalledTimes(1);
-      expect(mockGoogleCalendarService.refreshAccessToken).not.toHaveBeenCalled();
+      expect(
+        mockGoogleCalendarService.getStoredAccessToken,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.refreshAccessToken,
+      ).not.toHaveBeenCalled();
     });
 
     it("deleteGoogleEvent: 401 → refresh → retry succeeds", async () => {
@@ -1331,101 +1363,123 @@ describe("GoogleCalendarSyncService", () => {
         .mockRejectedValueOnce(google401Error)
         .mockResolvedValueOnce({});
 
-      const result = await service.deleteGoogleEvent(userId, "evt-del-001");
+      const result = await service.deleteGoogleEvent("sched-del-retry-1");
 
       expect(result.success).toBe(true);
-      expect(mockGoogleCalendarService.getStoredAccessToken).toHaveBeenCalledTimes(1);
-      expect(mockGoogleCalendarService.refreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.getStoredAccessToken,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.refreshAccessToken,
+      ).toHaveBeenCalledTimes(1);
     });
 
     it("deleteGoogleEvent: 401 → refresh fails → ERROR", async () => {
-      mockPrisma.event.findUnique.mockReset();
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockPrisma.googleCalendarEventSync.findUnique.mockReset();
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "google-del-002",
-        googleSyncStatus: GoogleSyncStatus.SYNCED,
+        userId: retryUserId,
       });
       mockPrisma.googleCalendarConnection.findUnique.mockReset();
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockReset();
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue("token-stored");
+      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
+        "token-stored",
+      );
       mockGoogleCalendarService.refreshAccessToken.mockReset();
       mockGoogleCalendarService.refreshAccessToken.mockResolvedValue(null);
       googleapisMock.__mock__.mockDelete.mockReset();
       googleapisMock.__mock__.mockDelete.mockRejectedValueOnce(google401Error);
 
-      const result = await service.deleteGoogleEvent(userId, "evt-del-002");
+      const result = await service.deleteGoogleEvent("sched-del-retry-2");
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Reconecte sua conta");
-      expect(mockGoogleCalendarService.getStoredAccessToken).toHaveBeenCalledTimes(1);
-      expect(mockGoogleCalendarService.refreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.getStoredAccessToken,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.refreshAccessToken,
+      ).toHaveBeenCalledTimes(1);
     });
 
     it("deleteGoogleEvent: 401 → refresh → retry 401 again → ERROR", async () => {
-      mockPrisma.event.findUnique.mockReset();
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockPrisma.googleCalendarEventSync.findUnique.mockReset();
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "google-del-003",
-        googleSyncStatus: GoogleSyncStatus.SYNCED,
+        userId: retryUserId,
       });
       mockPrisma.googleCalendarConnection.findUnique.mockReset();
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
+      mockConnection();
       mockGoogleCalendarService.getStoredAccessToken.mockReset();
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue("token-stored");
+      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
+        "token-stored",
+      );
       mockGoogleCalendarService.refreshAccessToken.mockReset();
-      mockGoogleCalendarService.refreshAccessToken.mockResolvedValue("token-refreshed");
+      mockGoogleCalendarService.refreshAccessToken.mockResolvedValue(
+        "token-refreshed",
+      );
       googleapisMock.__mock__.mockDelete.mockReset();
       googleapisMock.__mock__.mockDelete
         .mockRejectedValueOnce(google401Error)
         .mockRejectedValueOnce(google401Error);
 
-      const result = await service.deleteGoogleEvent(userId, "evt-del-003");
+      const result = await service.deleteGoogleEvent("sched-del-retry-3");
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("Unauthorized");
-      expect(mockGoogleCalendarService.getStoredAccessToken).toHaveBeenCalledTimes(1);
-      expect(mockGoogleCalendarService.refreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.getStoredAccessToken,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.refreshAccessToken,
+      ).toHaveBeenCalledTimes(1);
     });
 
     it("deleteGoogleEvent: 404 on delete → treat as success", async () => {
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue("token-stored");
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
+        "token-stored",
+      );
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "google-del-004",
-        googleSyncStatus: GoogleSyncStatus.SYNCED,
+        userId: retryUserId,
       });
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
+      mockConnection();
       googleapisMock.__mock__.mockDelete.mockRejectedValueOnce(google404Error);
 
-      const result = await service.deleteGoogleEvent(userId, "evt-del-004");
+      const result = await service.deleteGoogleEvent("sched-del-retry-4");
 
       expect(result.success).toBe(true);
       expect(result.error).toBeNull();
-      expect(mockGoogleCalendarService.getStoredAccessToken).toHaveBeenCalledTimes(1);
-      expect(mockGoogleCalendarService.refreshAccessToken).not.toHaveBeenCalled();
+      expect(
+        mockGoogleCalendarService.getStoredAccessToken,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.refreshAccessToken,
+      ).not.toHaveBeenCalled();
     });
 
     it("deleteGoogleEvent: 500 on delete → no refresh, ERROR", async () => {
-      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue("token-stored");
-      mockPrisma.event.findUnique.mockResolvedValue({
+      mockGoogleCalendarService.getStoredAccessToken.mockResolvedValue(
+        "token-stored",
+      );
+      mockPrisma.googleCalendarEventSync.findUnique.mockResolvedValue({
         googleEventId: "google-del-005",
-        googleSyncStatus: GoogleSyncStatus.SYNCED,
+        userId: retryUserId,
       });
-      mockPrisma.googleCalendarConnection.findUnique.mockResolvedValue({
-        calendarId: "primary",
-      });
+      mockConnection();
       googleapisMock.__mock__.mockDelete.mockRejectedValueOnce(google500Error);
 
-      const result = await service.deleteGoogleEvent(userId, "evt-del-005");
+      const result = await service.deleteGoogleEvent("sched-del-retry-5");
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("Internal Server Error");
-      expect(mockGoogleCalendarService.getStoredAccessToken).toHaveBeenCalledTimes(1);
-      expect(mockGoogleCalendarService.refreshAccessToken).not.toHaveBeenCalled();
+      expect(
+        mockGoogleCalendarService.getStoredAccessToken,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        mockGoogleCalendarService.refreshAccessToken,
+      ).not.toHaveBeenCalled();
     });
   });
 });

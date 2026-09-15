@@ -5,6 +5,7 @@ import type {
   RecurrenceEventResponse,
   UpdateEventPayload,
 } from "../types/domain";
+import type { GoogleCalendarEventSyncResponse } from "./googleCalendarApi";
 
 export async function listEvents() {
   const response = await api.get<ApiEnvelope<EventItem[]>>("/events");
@@ -41,6 +42,27 @@ export async function seedDefaultEvents() {
 export async function listRecurrenceGroup(groupId: string) {
   const response = await api.get<ApiEnvelope<EventItem[]>>(
     `/events/recurrence-group/${groupId}`,
+  );
+  return response.data;
+}
+
+export async function syncEventToGoogle(id: string) {
+  const response = await api.post<ApiEnvelope<GoogleCalendarEventSyncResponse>>(
+    `/events/${id}/sync-google`,
+  );
+  return response.data;
+}
+
+export async function unlinkEventFromGoogle(id: string) {
+  const response = await api.delete<ApiEnvelope<{ eventId: string; success: boolean; errors: string[] }>>(
+    `/events/${id}/sync-google`,
+  );
+  return response.data;
+}
+
+export async function getEventSyncStatus(id: string) {
+  const response = await api.get<ApiEnvelope<GoogleCalendarEventSyncResponse>>(
+    `/events/${id}/google-sync-status`,
   );
   return response.data;
 }
