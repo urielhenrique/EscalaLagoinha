@@ -20,11 +20,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const isHttpException = exception instanceof HttpException;
     const status = isHttpException
       ? exception.getStatus()
-      : HttpStatus.INTERNAL_SERVER_ERROR;
+      : this.isPayloadTooLarge(exception)
+        ? HttpStatus.PAYLOAD_TOO_LARGE
+        : HttpStatus.INTERNAL_SERVER_ERROR;
 
     const exceptionResponse = isHttpException
       ? exception.getResponse()
-      : "Erro interno do servidor.";
+      : this.isPayloadTooLarge(exception)
+        ? "O payload enviado excede o limite permitido (10 MB). Comprima a imagem ou envie uma URL."
+        : "Erro interno do servidor.";
 
     let message = "Erro inesperado.";
     let errors: string[] | undefined;
@@ -63,7 +67,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     const responseBody: Record<string, unknown> = {
       success: false,
-      message: status >= 500 ? "Erro interno do servidor." : message,
+      message:
+        status === HttpStatus.PAYLOAD_TOO_LARGE
+          ? exceptionResponse
+          : status >= 500
+            ? "Erro interno do servidor."
+            : message,
       errors,
       timestamp: new Date().toISOString(),
     };
@@ -73,5 +82,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
 
     response.status(status).json(responseBody);
+  }
+
+  private isPayloadTooLarge(exception: unknown): boolean {
+    if (typeof exception !== "object" || exception === null) return false;
+    const err = exception as Record<string, unknown>;
+    return (
+      err.type === "entity.too.large" ||
+      err.statusCode === HttpStatus.PAYLOAD_TOO_LARGE
+    );
   }
 }

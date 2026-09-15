@@ -2,6 +2,7 @@ import { Logger, ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory, Reflector } from "@nestjs/core";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { json } from "express";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
@@ -99,6 +100,9 @@ async function bootstrap() {
   if (isProduction) {
     app.getHttpAdapter().getInstance().set("trust proxy", 1);
   }
+
+  // ─── Body parser: permitir JSON de até 10 MB (foto base64 no /auth/me) ──
+  app.use(json({ limit: "10mb" }));
 
   // ─── Prefixo global + pipes + interceptors + filtros ─────────────────────
   app.setGlobalPrefix("api", {
